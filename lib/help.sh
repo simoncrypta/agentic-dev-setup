@@ -45,8 +45,12 @@ Tab switching works without a healthy agent pane. The agent is recreated lazily 
 the next tab switch or prefix+1.
 
 Omarchy / Linux:
-  Clears fcitx5 Ctrl+Alt+H/J spell-hint hotkeys (conflicts with pane focus)
-  Optionally patches Hyprland SUPER+ALT+RETURN to launch herdr
+  Clears fcitx5 Ctrl+Alt+H/J spell-hint hotkeys when fcitx5 is present
+  Optionally patches Hyprland SUPER+ALT+RETURN to launch herdr (Omarchy or generic)
+
+Ubuntu / Debian:
+  Uses apt for git, fzf, jq, neovim, lazygit, curl when available
+  Downloads herdr, worktrunk, and tuicr from upstream releases when needed
 
 Config:
   ~/.config/agentic-dev/config.toml      agent command + editor

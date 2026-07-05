@@ -67,8 +67,10 @@ main() {
   parse_install_args "$@"
 
   log "agentic-dev-setup v${AGENTIC_DEV_VERSION}"
-  info "os: $(detect_os)/$(detect_arch) shell: $(detect_shell_name)"
+  info "platform: $(detect_platform) shell: $(detect_shell_name)"
   is_omarchy && info "omarchy detected"
+  is_ubuntu && info "ubuntu detected"
+  is_debian && ! is_ubuntu && info "debian detected"
 
   install_dependencies
   deploy_configs

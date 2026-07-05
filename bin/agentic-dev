@@ -46,6 +46,8 @@ load_libs() {
 cmd_doctor() {
   log "agentic-dev doctor (v${AGENTIC_DEV_VERSION})"
   log ""
+  log "Platform: $(detect_platform)"
+  log ""
   log "Dependencies:"
   doctor_dependencies || true
   log ""

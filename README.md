@@ -1,6 +1,6 @@
 # agentic-dev-setup
 
-Shareable Herdr + worktrunk dev layout for agentic coding workflows. Works on **Omarchy** (Linux) and **macOS**.
+Shareable Herdr + worktrunk dev layout for agentic coding workflows. Works on **Omarchy**, **Ubuntu/Debian**, and **macOS**.
 
 Successor to [agentic-tmux-setup](https://github.com/simoncrypta/agentic-tmux-setup) — same sticky-agent layout, powered by [Herdr](https://herdr.dev) instead of tmux.
 
@@ -31,6 +31,7 @@ cd /path/to/agentic-dev-setup
 - **worktrunk hooks**: auto-create/close Herdr workspaces on worktree start/remove
 - **Config**: `~/.config/agentic-dev/config.toml` (agent command + editor)
 - **Omarchy/Linux**: fcitx5 hint hotkeys cleared (`Ctrl+Alt+H/J`); optional Hyprland binding patch
+- **Ubuntu/Debian**: apt installs for common deps; tuicr/herdr/worktrunk via GitHub when needed
 
 ### Layout
 
@@ -103,6 +104,24 @@ agentic-dev uninstall    # remove integration
 
 ## Omarchy / Linux notes
 
+### Ubuntu / Debian
+
+Dependencies install via **apt** when available:
+
+```bash
+sudo apt-get install -y git fzf jq neovim lazygit curl
+```
+
+Tools not in apt are fetched automatically:
+
+- **herdr** — [herdr.dev/install.sh](https://herdr.dev/install.sh)
+- **worktrunk** (`wt`) — GitHub release binary to `~/.local/bin`
+- **tuicr** — GitHub release binary to `~/.local/bin`
+
+Homebrew (Linuxbrew) is used when present and takes priority over apt.
+
+On Ubuntu with **Hyprland**, the installer can optionally add `SUPER+ALT+RETURN` → `herdr` in `~/.config/hypr/bindings.conf`. If you use **fcitx5** (common on CJK setups), the `Ctrl+Alt+H/J` hint hotkey fix applies the same way as on Omarchy.
+
 ### fcitx5 `Ctrl+Alt+H` conflict
 
 Omarchy runs fcitx5 for emoji and compose. By default fcitx5 binds `Ctrl+Alt+H/J` to spell-hint toggles, which conflicts with Herdr pane focus. This installer clears those hotkeys in `~/.config/fcitx5/conf/keyboard.conf`.
@@ -111,16 +130,16 @@ See [Omarchy discussion #1578](https://github.com/basecamp/omarchy/discussions/1
 
 ### Hyprland launcher
 
-On Omarchy, the installer can patch `~/.config/hypr/bindings.conf` to launch `herdr` on `SUPER+ALT+RETURN` (replacing tmux if present). You'll be prompted during install.
+On Omarchy or any system with `~/.config/hypr/bindings.conf`, the installer can patch a key binding to launch `herdr` on `SUPER+ALT+RETURN` (replacing tmux if present). You'll be prompted during install.
+
+Omarchy uses `uwsm-app` and `omarchy-cmd-terminal-cwd`; other Hyprland setups get a generic `xdg-terminal-exec herdr` binding.
 
 ## Dependencies
 
-Installed only if missing (brew, pacman, or upstream installers):
+Installed only if missing (Homebrew, apt, pacman, or upstream installers):
 
-- [herdr](https://herdr.dev) (brew or `curl -fsSL https://herdr.dev/install.sh | sh`)
-- git, worktrunk (`wt`), fzf, jq, tuicr
-- nvim with [LazyVim](https://www.lazyvim.org/) and neo-tree (explorer tab)
-- lazygit (used from LazyVim or standalone)
+- [herdr](https://herdr.dev) (brew, or `curl -fsSL https://herdr.dev/install.sh | sh`)
+- git, worktrunk (`wt`), fzf, jq, tuicr, neovim, lazygit
 
 ## Files installed
 

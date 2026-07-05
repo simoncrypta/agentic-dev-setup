@@ -9,6 +9,50 @@ detect_os() {
   esac
 }
 
+detect_linux_distro() {
+  [[ "$(detect_os)" == "linux" ]] || return 0
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    case "${ID:-}" in
+      ubuntu) printf 'ubuntu' ;;
+      debian) printf 'debian' ;;
+      arch) printf 'arch' ;;
+      *) printf '%s' "${ID:-linux}" ;;
+    esac
+    return 0
+  fi
+  printf 'unknown'
+}
+
+detect_platform() {
+  local os distro
+  os="$(detect_os)"
+  if [[ "$os" == "linux" ]]; then
+    distro="$(detect_linux_distro)"
+    printf '%s/%s/%s' "$os" "$distro" "$(detect_arch)"
+    return 0
+  fi
+  printf '%s/%s' "$os" "$(detect_arch)"
+}
+
+is_ubuntu() {
+  [[ "$(detect_linux_distro)" == "ubuntu" ]]
+}
+
+is_debian() {
+  [[ "$(detect_linux_distro)" == "debian" ]]
+}
+
+has_apt() {
+  command -v apt-get >/dev/null 2>&1
+}
+
+has_hyprland() {
+  [[ -f "${HOME}/.config/hypr/hyprland.conf" \
+    || -f "${HOME}/.config/hypr/bindings.conf" ]]
+}
+
 detect_arch() {
   uname -m
 }
@@ -82,7 +126,7 @@ doctor_omarchy_integration() {
       missing=$((missing + 1))
     fi
   fi
-  if is_omarchy; then
+  if is_omarchy || has_hyprland; then
     if [[ -f "${HOME}/.config/hypr/bindings.conf" ]] \
       && grep -qE 'Herdr|herdr' "${HOME}/.config/hypr/bindings.conf" 2>/dev/null; then
       log "  ok  hypr bindings include herdr"

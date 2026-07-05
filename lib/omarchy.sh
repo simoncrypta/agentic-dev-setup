@@ -2,7 +2,14 @@
 # shellcheck shell=bash
 
 HYPR_BINDINGS="${HOME}/.config/hypr/bindings.conf"
-HERDR_HYPR_BINDING='bindd = SUPER ALT, RETURN, Herdr, exec, uwsm-app -- xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)" herdr'
+
+herdr_hypr_binding_line() {
+  if is_omarchy; then
+    printf '%s' 'bindd = SUPER ALT, RETURN, Herdr, exec, uwsm-app -- xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)" herdr'
+  else
+    printf '%s' 'bind = SUPER ALT, RETURN, exec, xdg-terminal-exec herdr'
+  fi
+}
 
 deploy_fcitx5_keyboard_conf() {
   [[ "$(detect_os)" == "linux" ]] || return 0
@@ -30,6 +37,9 @@ restart_fcitx5() {
     pkill -x fcitx5 2>/dev/null || true
     if command -v uwsm-app >/dev/null 2>&1; then
       uwsm-app -- fcitx5 --disable notificationitem &
+    elif command -v systemctl >/dev/null 2>&1 \
+      && systemctl --user is-active fcitx5.service >/dev/null 2>&1; then
+      systemctl --user restart fcitx5.service
     else
       fcitx5 --disable notificationitem &
     fi
@@ -63,12 +73,13 @@ patch_hypr_herdr_binding() {
     return 0
   fi
 
-  local tmp replaced=0
+  local tmp replaced=0 binding
+  binding="$(herdr_hypr_binding_line)"
   tmp="$(mktemp)"
   while IFS= read -r line; do
     if [[ "$line" =~ SUPER[[:space:]]+ALT,[[:space:]]+RETURN ]] \
       && [[ "$line" =~ tmux|Tmux ]]; then
-      printf '%s\n' "$HERDR_HYPR_BINDING"
+      printf '%s\n' "$binding"
       replaced=1
     else
       printf '%s\n' "$line"
@@ -76,7 +87,7 @@ patch_hypr_herdr_binding() {
   done <"$HYPR_BINDINGS" >"$tmp"
 
   if [[ "$replaced" -eq 0 ]]; then
-    printf '\n%s\n' "$HERDR_HYPR_BINDING" >>"$tmp"
+    printf '\n%s\n' "$binding" >>"$tmp"
   fi
 
   mv "$tmp" "$HYPR_BINDINGS"
@@ -86,7 +97,7 @@ patch_hypr_herdr_binding() {
 deploy_omarchy_integration() {
   deploy_fcitx5_keyboard_conf
 
-  if is_omarchy; then
+  if is_omarchy || has_hyprland; then
     patch_hypr_herdr_binding
   fi
 }
