@@ -1,0 +1,10 @@
+# Copy to your plugin config directory:
+#   cp config.toml.example "$(herdr plugin config-dir agentic-dev.dev-layout)/config.toml"
+#
+# Or use ~/.config/agentic-dev/config.toml when running the full agentic-dev-setup installer.
+
+[agent]
+command = "agent"
+
+[layout]
+editor = "nvim"

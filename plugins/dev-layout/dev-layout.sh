@@ -6,16 +6,23 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 STATE_VERSION=1
 TABS=(review explorer terminal)
 
+_plugin_root() {
+  if [[ -n "${HERDR_PLUGIN_ROOT:-}" ]]; then
+    printf '%s' "$HERDR_PLUGIN_ROOT"
+  else
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+  fi
+}
+
 # shellcheck source=/dev/null
-[[ -r "${HOME}/.config/agentic-dev/config-reader.sh" ]] \
-  && source "${HOME}/.config/agentic-dev/config-reader.sh"
+source "$(_plugin_root)/config-reader.sh"
 
 _state_dir() {
   if [[ -n "${HERDR_PLUGIN_STATE_DIR:-}" ]]; then
     printf '%s' "$HERDR_PLUGIN_STATE_DIR"
-  else
-    printf '%s' "${HOME}/.config/herdr/plugins/dev-layout/state"
+    return 0
   fi
+  printf '%s' "${XDG_STATE_HOME:-${HOME}/.local/state}/herdr/plugins/agentic-dev.dev-layout"
 }
 
 _state_path() {

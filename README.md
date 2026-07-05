@@ -157,15 +157,129 @@ Installed only if missing (Homebrew, apt, pacman, or upstream installers):
 
 Shell rc gets a fenced marker block in `~/.bashrc` and/or `~/.zshrc`.
 
-## Plugin install from GitHub
+## Plugin only
 
-After the repo is published:
+Use this if you already have Herdr configured and only want the **dev layout plugin** (`agentic-dev.dev-layout`) — sticky agent pane + review / explorer / terminal tabs.
+
+**Requires:** [Herdr](https://herdr.dev) 0.7+, `jq`, and the review-tab tools you use (`tuicr`, `nvim`, etc.).
+
+### Trust and security
+
+Herdr plugins are ordinary code that runs as your user and can call the full Herdr CLI. See [Herdr: Trust and security](https://herdr.dev/docs/plugins/#trust-and-security).
+
+Before installing:
+
+1. Skim [`plugins/dev-layout/herdr-plugin.toml`](plugins/dev-layout/herdr-plugin.toml) and [`plugins/dev-layout/dev-layout.sh`](plugins/dev-layout/dev-layout.sh).
+2. Prefer interactive install (no `--yes`) the first time — Herdr shows a preview of the source and commands.
+3. Pin a release when you want a fixed revision:
+
+```bash
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout --ref v0.1.1
+```
+
+Use `--yes` only for sources you already trust. The full `curl | bash` installer copies and links the plugin locally — equivalent to trusting this repository.
+
+### Install the plugin
+
+**From GitHub** (review the preview, then confirm):
 
 ```bash
 herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout
 ```
 
-The curl installer uses local copy + `herdr plugin link` instead.
+**Pinned to a release:**
+
+```bash
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout --ref v0.1.1
+```
+
+**From a local clone** (development):
+
+```bash
+git clone https://github.com/simoncrypta/agentic-dev-setup.git
+herdr plugin link ~/path/to/agentic-dev-setup/plugins/dev-layout
+```
+
+**Verify:**
+
+```bash
+herdr plugin list
+herdr plugin action invoke agentic-dev.dev-layout.create
+```
+
+### Wire up keybindings
+
+Add the plugin actions to `~/.config/herdr/config.toml`. Minimum bindings:
+
+```toml
+[[keys.command]]
+key = "prefix+d"
+type = "plugin_action"
+command = "agentic-dev.dev-layout.apply"
+
+[[keys.command]]
+key = "prefix+1"
+type = "plugin_action"
+command = "agentic-dev.dev-layout.focus_agent"
+
+[[keys.command]]
+key = "alt+1"
+type = "plugin_action"
+command = "agentic-dev.dev-layout.select_review"
+
+[[keys.command]]
+key = "alt+2"
+type = "plugin_action"
+command = "agentic-dev.dev-layout.select_explorer"
+
+[[keys.command]]
+key = "alt+3"
+type = "plugin_action"
+command = "agentic-dev.dev-layout.select_terminal"
+```
+
+Or copy the full example from [`config/herdr/config.toml`](config/herdr/config.toml) in this repo (prefix `Ctrl-Space`, pane focus on `Ctrl+Alt+HJKL`, etc.).
+
+Reload after editing:
+
+```bash
+herdr server reload-config
+```
+
+### Agent command (optional)
+
+The plugin reads settings from the Herdr plugin config directory first, then falls back to the full-setup path:
+
+1. `$(herdr plugin config-dir agentic-dev.dev-layout)/config.toml` — preferred ([Herdr convention](https://herdr.dev/docs/plugins/#commands-and-environment))
+2. `~/.config/agentic-dev/config.toml` — when using the full installer
+
+```bash
+herdr plugin config-dir agentic-dev.dev-layout
+cp plugins/dev-layout/config.toml.example "$(herdr plugin config-dir agentic-dev.dev-layout)/config.toml"
+# edit command / editor, then re-run create or apply
+```
+
+Minimal config:
+
+```toml
+[agent]
+command = "agent"
+
+[layout]
+editor = "nvim"
+```
+
+Without config, the agent pane defaults to `agent` and the explorer tab uses `$EDITOR` or `nvim`.
+
+### Invoke without keybindings
+
+```bash
+herdr plugin action invoke agentic-dev.dev-layout.create   # create layout in focused workspace
+herdr plugin action invoke agentic-dev.dev-layout.apply    # ensure layout exists
+herdr plugin action invoke agentic-dev.dev-layout.select_review
+```
+
+The full installer also adds shell commands (`dev`, `wtc`, …), worktrunk hooks, and Linux desktop fixes — use [Quick install](#quick-install) if you want those.
 
 ## Migrating from agentic-tmux-setup
 

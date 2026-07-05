@@ -60,8 +60,12 @@ Config:
   ~/.config/worktrunk/config.toml        worktrunk hooks
   ~/.config/fcitx5/conf/keyboard.conf    Linux fcitx5 hint trigger override
 
-Plugin install from GitHub (alternative):
-  herdr plugin install <owner>/agentic-dev-setup/plugins/dev-layout
+Plugin only (see README — review manifest/scripts before install):
+  herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout
+  herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout --ref v0.1.1
+  herdr plugin link /path/to/agentic-dev-setup/plugins/dev-layout
+  herdr plugin config-dir agentic-dev.dev-layout
+  herdr plugin action invoke agentic-dev.dev-layout.create
 EOF
 }
 
