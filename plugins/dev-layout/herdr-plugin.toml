@@ -1,0 +1,50 @@
+id = "agentic-dev.dev-layout"
+name = "Dev Layout"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Sticky agent pane with review, explorer, and terminal tabs"
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "create"
+title = "Create dev layout"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "create"]
+
+[[actions]]
+id = "apply"
+title = "Apply dev layout"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "apply"]
+
+[[actions]]
+id = "focus_agent"
+title = "Focus agent pane"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "focus_agent"]
+
+[[actions]]
+id = "select_review"
+title = "Review tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "select_review"]
+
+[[actions]]
+id = "select_explorer"
+title = "Explorer tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "select_explorer"]
+
+[[actions]]
+id = "select_terminal"
+title = "Terminal tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "select_terminal"]
+
+[[events]]
+on = "pane.exited"
+command = ["bash", "dev-layout.sh", "event_pane_exited"]
+
+[[events]]
+on = "workspace.closed"
+command = ["bash", "dev-layout.sh", "event_workspace_closed"]

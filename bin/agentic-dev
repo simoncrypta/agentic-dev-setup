@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+find_lib_dir() {
+  if [[ -n "${AGENTIC_DEV_LIB:-}" && -d "$AGENTIC_DEV_LIB" ]]; then
+    printf '%s' "$AGENTIC_DEV_LIB"
+    return 0
+  fi
+  local bin
+  bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -d "$bin/../lib" ]]; then
+    printf '%s' "$(cd "$bin/../lib" && pwd)"
+    return 0
+  fi
+  if [[ -d "${HOME}/.local/share/agentic-dev/lib" ]]; then
+    printf '%s' "${HOME}/.local/share/agentic-dev/lib"
+    return 0
+  fi
+  return 1
+}
+
+load_libs() {
+  local lib
+  lib="$(find_lib_dir)" || {
+    printf 'error: cannot find agentic-dev lib (re-run install.sh)\n' >&2
+    exit 1
+  }
+  # shellcheck source=/dev/null
+  source "$lib/common.sh"
+  # shellcheck source=/dev/null
+  source "$lib/detect.sh"
+  # shellcheck source=/dev/null
+  source "$lib/deps.sh"
+  # shellcheck source=/dev/null
+  source "$lib/config.sh"
+  # shellcheck source=/dev/null
+  source "$lib/shell-rc.sh"
+  # shellcheck source=/dev/null
+  source "$lib/uninstall.sh"
+  # shellcheck source=/dev/null
+  source "$lib/help.sh"
+  # shellcheck source=/dev/null
+  source "$lib/omarchy.sh"
+}
+
+cmd_doctor() {
+  log "agentic-dev doctor (v${AGENTIC_DEV_VERSION})"
+  log ""
+  log "Dependencies:"
+  doctor_dependencies || true
+  log ""
+  log "Integration:"
+  local rc
+  rc="$(shell_rc_for "$(detect_shell_name)")"
+  if has_marker_block "$rc"; then
+    log "  ok  marker block in $rc"
+  else
+    log "  missing  marker block in $rc"
+  fi
+  if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]]; then
+    log "  ok  $AGENTIC_DEV_USER_CONFIG (agent=$(read_agent_command))"
+  else
+    log "  missing  $AGENTIC_DEV_USER_CONFIG"
+  fi
+  [[ -f "$HERDR_CONFIG_DIR/config.toml" ]] && log "  ok  herdr config.toml" || log "  missing  herdr config.toml"
+  [[ -f "$HERDR_PLUGIN_DIR/dev-layout.sh" ]] && log "  ok  dev-layout plugin" || log "  missing  dev-layout plugin"
+  [[ -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" ]] && log "  ok  herdr-layout.sh" || log "  missing  herdr-layout.sh"
+  doctor_plugin || true
+  doctor_omarchy_integration || true
+}
+
+cmd_update() {
+  FORCE=0
+  deploy_configs
+  deploy_omarchy_integration
+  install_shell_integration || true
+  show_summary
+}
+
+cmd_reconfigure() {
+  FORCE=1
+  prompt_agent_command
+  info "agent command updated — new workspaces will use: $(read_agent_command)"
+  info "restart agent panes or run 'dev' in a new workspace to apply"
+}
+
+usage() {
+  cat <<EOF
+Usage: agentic-dev <command>
+
+Commands:
+  help          Show full help
+  doctor        Check dependencies and integration
+  update        Re-sync configs
+  reconfigure   Re-prompt agent command
+  dry-run       Show planned install actions
+  uninstall     Remove integration
+
+Run 'agentic-dev help' for shell commands and keybindings.
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+
+  case "$cmd" in
+    help|-h|--help)
+      load_libs
+      show_help
+      ;;
+    doctor)
+      load_libs
+      cmd_doctor
+      ;;
+    update)
+      load_libs
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --force|-f) FORCE=1; shift ;;
+          *) die "unknown option: $1" ;;
+        esac
+      done
+      cmd_update
+      ;;
+    reconfigure)
+      load_libs
+      cmd_reconfigure
+      ;;
+    dry-run)
+      load_libs
+      DRY_RUN=1
+      YES=1
+      install_dependencies
+      deploy_configs
+      deploy_omarchy_integration
+      install_shell_integration || true
+      ;;
+    uninstall)
+      load_libs
+      uninstall_agentic_dev
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,23 @@
+[pre-start]
+copy-ignored = "wt step copy-ignored"
+
+[post-start]
+herdr = """
+S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+W="{{ worktree_path }}"
+
+source "$HOME/.config/worktrunk/herdr-layout.sh"
+WT_HERDR_NO_ATTACH=1 wt_herdr_layout_create "$S" "$W"
+
+echo "✓ Herdr workspace '$S' created"
+echo "  Layout: agent pane (left, sticky) | tabs: review, explorer, terminal"
+echo "  Switch tabs: Alt+1..3 (review/explorer/terminal), prefix+1 focuses agent, prefix+2..4 same tabs"
+echo "  Attach with: herdr"
+"""
+
+[post-remove]
+herdr = """
+S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+source "$HOME/.config/worktrunk/herdr-layout.sh"
+wt_herdr_layout_close "$S"
+"""

@@ -1,0 +1,10 @@
+{
+  "name": "agentic-dev-setup",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
