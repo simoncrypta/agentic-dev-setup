@@ -3,3 +3,6 @@
 *~
 node_modules/
 .wrangler/
+public/install.sh
+public/manifest.json
+public/lib/

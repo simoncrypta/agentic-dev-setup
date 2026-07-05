@@ -290,18 +290,24 @@ curl -fsSL https://setup.simoncrypta.dev/install.sh | bash
 
 ## Cloudflare hosting
 
-Static site on Cloudflare Pages (`setup.simoncrypta.dev`). Deploy manually from this repo.
+Static install CDN on Cloudflare Pages (`setup.simoncrypta.dev`). The site root redirects to this GitHub repo; `install.sh` and `lib/*.sh` are served from the same host for `curl | bash`.
 
-1. Create the Pages project in Cloudflare (or use an existing one named `agentic-dev-setup`)
-2. Authenticate once: `npx wrangler login`
-3. Deploy:
+Redirect is configured via [`public/_redirects`](public/_redirects) (Cloudflare Pages native format — 301 to GitHub, static assets unchanged).
+
+Deploy:
 
 ```bash
 npm install
-npm run deploy
+npm run deploy   # runs scripts/sync-public.sh then wrangler pages deploy public
 ```
 
-Custom domain: set `setup.simoncrypta.dev` on the Pages project in the Cloudflare dashboard.
+Custom domain (one-time): in Cloudflare DNS for `simoncrypta.dev`, add a proxied CNAME:
+
+| Type | Name | Target |
+|------|------|--------|
+| CNAME | `setup` | `agentic-dev-setup.pages.dev` |
+
+Then attach `setup.simoncrypta.dev` under Workers & Pages → agentic-dev-setup → Custom domains (or it may activate automatically once the CNAME exists).
 
 ## Development
 
