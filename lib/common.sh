@@ -19,6 +19,7 @@ PLUGIN_ID="agentic-dev.dev-layout"
 DRY_RUN=0
 YES=0
 FORCE=0
+RECONFIGURE=0
 
 log() { printf '%s\n' "$*"; }
 info() { printf '→ %s\n' "$*"; }

@@ -51,8 +51,10 @@ read_layout_editor() {
   fi
 }
 
+RECONFIGURE=0
+
 prompt_agent_command() {
-  if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$FORCE" -ne 1 ]]; then
+  if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$RECONFIGURE" -ne 1 ]]; then
     info "using existing agent command: $(read_agent_command)"
     return 0
   fi

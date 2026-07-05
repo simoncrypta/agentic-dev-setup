@@ -8,7 +8,7 @@ find_lib_dir() {
   fi
   local bin
   bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ -d "$bin/../lib" ]]; then
+  if [[ -f "$bin/../lib/common.sh" ]]; then
     printf '%s' "$(cd "$bin/../lib" && pwd)"
     return 0
   fi
@@ -70,7 +70,6 @@ cmd_doctor() {
 }
 
 cmd_update() {
-  FORCE=0
   deploy_configs
   deploy_omarchy_integration
   install_shell_integration || true
@@ -78,7 +77,7 @@ cmd_update() {
 }
 
 cmd_reconfigure() {
-  FORCE=1
+  RECONFIGURE=1
   prompt_agent_command
   info "agent command updated — new workspaces will use: $(read_agent_command)"
   info "restart agent panes or run 'dev' in a new workspace to apply"
