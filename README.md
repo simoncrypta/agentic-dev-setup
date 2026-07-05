@@ -290,24 +290,30 @@ curl -fsSL https://setup.simoncrypta.dev/install.sh | bash
 
 ## Cloudflare hosting
 
-Static install CDN on Cloudflare Pages (`setup.simoncrypta.dev`). The site root redirects to this GitHub repo; `install.sh` and `lib/*.sh` are served from the same host for `curl | bash`.
+Install CDN on Cloudflare Pages (`agentic-dev-setup.pages.dev`) with custom domain `setup.simoncrypta.dev`.
 
-Redirect is configured via [`public/_redirects`](public/_redirects) (Cloudflare Pages native format — 301 to GitHub, static assets unchanged).
+| URL | Behavior |
+|-----|----------|
+| `https://setup.simoncrypta.dev/` | 301 → GitHub repo (Worker) |
+| `https://setup.simoncrypta.dev/install.sh` | Installer script (Worker → Pages) |
+| `https://agentic-dev-setup.pages.dev/` | 301 → GitHub repo (`public/_redirects`) |
+
+The custom domain uses a tiny Worker ([`workers/setup-domain/`](workers/setup-domain/)) with `custom_domain = true`, which creates the Cloudflare DNS record automatically. It redirects `/` to GitHub and proxies everything else to the Pages deployment.
 
 Deploy:
 
 ```bash
 npm install
-npm run deploy   # runs scripts/sync-public.sh then wrangler pages deploy public
+npm run deploy   # Pages assets + setup.simoncrypta.dev Worker
 ```
 
-Custom domain (one-time): in Cloudflare DNS for `simoncrypta.dev`, add a proxied CNAME:
+DNS troubleshooting: if a hostname was queried before the record existed, flush local cache (`resolvectl flush-caches`) and retry. `ping setup.simoncrypta.dev` should resolve to a Cloudflare anycast IP (e.g. `172.64.80.1`).
 
-| Type | Name | Target |
-|------|------|--------|
-| CNAME | `setup` | `agentic-dev-setup.pages.dev` |
+Manual DNS fallback (Pages-only, requires `CLOUDFLARE_API_TOKEN` with Zone.DNS Edit):
 
-Then attach `setup.simoncrypta.dev` under Workers & Pages → agentic-dev-setup → Custom domains (or it may activate automatically once the CNAME exists).
+```bash
+CLOUDFLARE_API_TOKEN=... bash scripts/ensure-setup-dns.sh
+```
 
 ## Development
 

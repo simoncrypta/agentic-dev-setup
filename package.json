@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "predeploy": "bash scripts/sync-public.sh",
-    "deploy": "wrangler pages deploy public --project-name=agentic-dev-setup"
+    "deploy": "wrangler pages deploy public --project-name=agentic-dev-setup && wrangler deploy --config workers/setup-domain/wrangler.jsonc",
+    "deploy:pages": "npm run predeploy && wrangler pages deploy public --project-name=agentic-dev-setup",
+    "deploy:domain": "wrangler deploy --config workers/setup-domain/wrangler.jsonc"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
