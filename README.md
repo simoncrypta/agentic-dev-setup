@@ -4,6 +4,9 @@ Shareable Herdr + worktrunk dev layout for agentic coding workflows. Works on **
 
 Successor to [agentic-tmux-setup](https://github.com/simoncrypta/agentic-tmux-setup) — same sticky-agent layout, powered by [Herdr](https://herdr.dev) instead of tmux.
 
+<img width="3396" height="1390" alt="image" src="https://github.com/user-attachments/assets/eb89337e-262d-4929-bdb8-def28c4a3baf" />
+
+
 ## Quick install
 
 ```bash
