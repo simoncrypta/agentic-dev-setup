@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Bootstrap libs from GitHub raw so curl|bash always gets the repo tip.
+# INSTALL_SRC may still point at the CDN for legacy callers; asset fetches
+# use github_raw_base() in lib/common.sh.
 bootstrap_remote_libs() {
-  local base="${INSTALL_SRC:-https://setup.simoncrypta.dev}"
+  local base="${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/simoncrypta/agentic-dev-setup/master}"
   local tmp lib
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/lib"
@@ -18,6 +21,7 @@ resolve_root() {
     cd "$(dirname "$self")" && pwd
     return 0
   fi
+  # Mark remote install so install_src_dir() is not treated as a local tree.
   INSTALL_SRC="${INSTALL_SRC:-https://setup.simoncrypta.dev}"
   bootstrap_remote_libs
 }

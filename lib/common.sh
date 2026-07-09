@@ -34,6 +34,17 @@ run() {
   fi
 }
 
+# Read a line from the controlling terminal so prompts work when the
+# installer is fed via `curl ... | bash` (stdin is the pipe, not the TTY).
+read_tty() {
+  local __var="$1"
+  if [[ -r /dev/tty ]]; then
+    read -r "$__var" </dev/tty
+  else
+    read -r "$__var"
+  fi
+}
+
 confirm() {
   local prompt="$1"
   if [[ "$YES" -eq 1 ]]; then
@@ -41,7 +52,7 @@ confirm() {
   fi
   printf '%s [y/N] ' "$prompt"
   local reply
-  read -r reply
+  read_tty reply
   [[ "$reply" =~ ^[Yy]$ ]]
 }
 
@@ -89,6 +100,12 @@ install_src_dir() {
   printf '%s' "https://setup.simoncrypta.dev"
 }
 
+# Remote install assets (config/, bin/, plugins/) come from GitHub raw.
+# The CDN only hosts install.sh + lib/ for bootstrap.
+github_raw_base() {
+  printf '%s' "${GITHUB_RAW_BASE:-https://raw.githubusercontent.com/simoncrypta/agentic-dev-setup/master}"
+}
+
 fetch_file() {
   local rel="$1" dest="$2"
   local base
@@ -98,7 +115,8 @@ fetch_file() {
     return 0
   fi
   ensure_dir "$(dirname "$dest")"
-  local url="${base%/}/$rel"
+  local url
+  url="$(github_raw_base)/$rel"
   info "download: $url"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0

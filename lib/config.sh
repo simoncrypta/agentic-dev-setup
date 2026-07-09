@@ -81,7 +81,7 @@ prompt_agent_command() {
   log ""
   printf 'Choice [1-5]: '
   local choice custom_cmd cmd="agent"
-  read -r choice
+  read_tty choice
   case "$choice" in
     1|agent) cmd="agent" ;;
     2|codex) cmd="codex" ;;
@@ -89,7 +89,7 @@ prompt_agent_command() {
     4|claude) cmd="claude" ;;
     5|custom)
       printf 'Enter custom command: '
-      read -r custom_cmd
+      read_tty custom_cmd
       cmd="${custom_cmd:-agent}"
       ;;
     ""|*) cmd="agent" ;;
