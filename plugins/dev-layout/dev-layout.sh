@@ -102,6 +102,39 @@ _pane_exists() {
   _herdr_json pane get "$pane_id" >/dev/null 2>&1
 }
 
+# Serialize layout mutations per workspace. Concurrent create/apply (e.g. worktrunk
+# post-start + wtc/dev attach) otherwise race and open duplicate agent panes.
+_layout_lock_acquire() {
+  local workspace_id="$1"
+  local lockfile
+  mkdir -p "$(_state_dir)"
+  lockfile="$(_state_dir)/${workspace_id}.lock"
+  exec 9>"$lockfile"
+  flock 9
+}
+
+_layout_lock_release() {
+  flock -u 9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+}
+
+_extra_panes_on_tab() {
+  local workspace_id="$1" tab_id="$2" tool_pane="$3"
+  _herdr_json pane list --workspace "$workspace_id" \
+    | _jq --arg tab "$tab_id" --arg tool "$tool_pane" \
+      '.result.panes[] | select(.tab_id == $tab and .pane_id != $tool) | .pane_id'
+}
+
+_close_orphan_agent_panes() {
+  local workspace_id="$1" tab_id="$2" tool_pane="$3" keep_pane="${4:-}"
+  local pane_id
+  while IFS= read -r pane_id; do
+    [[ -n "$pane_id" ]] || continue
+    [[ "$pane_id" == "$keep_pane" ]] && continue
+    _herdr_json pane close "$pane_id" >/dev/null 2>&1 || true
+  done < <(_extra_panes_on_tab "$workspace_id" "$tab_id" "$tool_pane")
+}
+
 _state_load() {
   local workspace_id="$1"
   local path
@@ -217,17 +250,26 @@ _ensure_tab() {
 
 _ensure_agent_pane() {
   local workspace_id="$1" workdir="$2" state="$3" tab="$4"
-  local agent_pane tool_pane tab_id
-
-  agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
-  if _pane_exists "$agent_pane"; then
-    printf '%s' "$agent_pane"
-    return 0
-  fi
+  local agent_pane tool_pane tab_id existing
 
   tab_id="$(_state_get_tab_id "$state" "$tab")"
   tool_pane="$(_state_get_tool_pane "$state" "$tab")"
   [[ -n "$tab_id" && -n "$tool_pane" ]] || return 1
+
+  agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  if _pane_exists "$agent_pane"; then
+    _close_orphan_agent_panes "$workspace_id" "$tab_id" "$tool_pane" "$agent_pane"
+    printf '%s' "$agent_pane"
+    return 0
+  fi
+
+  # Reclaim a leftover split from a raced create before opening another.
+  existing="$(_extra_panes_on_tab "$workspace_id" "$tab_id" "$tool_pane" | head -1)"
+  if [[ -n "$existing" ]] && _pane_exists "$existing"; then
+    _close_orphan_agent_panes "$workspace_id" "$tab_id" "$tool_pane" "$existing"
+    printf '%s' "$existing"
+    return 0
+  fi
 
   _herdr_json tab focus "$tab_id" >/dev/null
   agent_pane="$(_herdr_json pane split "$tool_pane" --direction right --ratio 0.5 --cwd "$workdir" --no-focus \
@@ -280,6 +322,10 @@ _layout_ensure() {
   fi
 
   workspace_id="$(_ensure_workspace "$label" "$workdir")"
+  _layout_lock_acquire "$workspace_id"
+  # shellcheck disable=SC2064
+  trap '_layout_lock_release' RETURN
+
   state="$(_state_load "$workspace_id" 2>/dev/null || _state_init "$workspace_id" "$label" "$workdir")"
   state="$(printf '%s' "$state" | jq --arg wid "$workspace_id" --arg label "$label" --arg workdir "$workdir" \
     '.workspace_id = $wid | .label = $label | .workdir = $workdir')"
@@ -392,7 +438,6 @@ main() {
   case "$cmd" in
     create|apply)
       _resolve_context
-      _layout_ensure >/dev/null
       _select_tab review
       ;;
     focus_agent)

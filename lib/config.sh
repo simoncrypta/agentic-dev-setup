@@ -180,6 +180,15 @@ deploy_plugin() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
       info "[dry-run] herdr plugin link $dest"
     else
+      # plugin link needs a running server (ENOENT otherwise).
+      if ! herdr status server 2>/dev/null | grep -q '^status: running'; then
+        herdr server >/dev/null 2>&1 &
+        local _i
+        for _i in 1 2 3 4 5 6 7 8 9 10; do
+          herdr status server 2>/dev/null | grep -q '^status: running' && break
+          sleep 0.2
+        done
+      fi
       herdr plugin link "$dest" 2>/dev/null || herdr plugin link "$dest" || warn "herdr plugin link failed — run manually: herdr plugin link $dest"
     fi
   else
