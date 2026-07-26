@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Herdr dev layout: sticky agent pane (left 50%) + review/explorer/terminal tabs.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
@@ -135,12 +136,54 @@ _close_orphan_agent_panes() {
   done < <(_extra_panes_on_tab "$workspace_id" "$tab_id" "$tool_pane")
 }
 
-_state_load() {
+_state_quarantine() {
+  local workspace_id="$1" path="$2"
+  local quarantine_dir target
+  quarantine_dir="$(_state_dir)/quarantine"
+  mkdir -p "$quarantine_dir"
+  target="$(mktemp "$quarantine_dir/$workspace_id.json.XXXXXX")"
+  if ! mv "$path" "$target"; then
+    rm -f "$target"
+    return 1
+  fi
+  printf 'dev-layout: quarantined invalid state: %s\n' "$target" >&2
+}
+
+_state_probe() {
   local workspace_id="$1"
-  local path
+  local path filename_workspace_id
   path="$(_state_path "$workspace_id")"
   [[ -f "$path" ]] || return 1
-  cat "$path"
+  filename_workspace_id="${path##*/}"
+  filename_workspace_id="${filename_workspace_id%.json}"
+
+  if jq -e \
+    --arg workspace_id "$filename_workspace_id" \
+    --argjson version "$STATE_VERSION" \
+    'type == "object"
+      and (.version | type == "number")
+      and .version == $version
+      and (.workspace_id | type == "string")
+      and .workspace_id == $workspace_id
+      and (.label | type == "string")
+      and (.workdir | type == "string")
+      and (.agent_pane_id | type == "string")
+      and (.active_tab | type == "string")
+      and (.tabs | type == "object")' \
+    "$path" >/dev/null 2>&1; then
+    cat "$path"
+    return 0
+  fi
+
+  if ! _state_quarantine "$filename_workspace_id" "$path"; then
+    printf 'dev-layout: unable to quarantine invalid state; removing active record: %s\n' "$path" >&2
+    rm -f "$path"
+  fi
+  return 1
+}
+
+_state_load() {
+  _state_probe "$1"
 }
 
 _state_save() {
@@ -464,4 +507,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
