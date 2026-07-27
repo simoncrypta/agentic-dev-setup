@@ -139,14 +139,51 @@ doctor_omarchy_integration() {
 }
 
 doctor_plugin() {
+  local missing=0
   if ! command -v herdr >/dev/null 2>&1; then
     log "  missing  herdr (cannot check plugin)"
     return 1
   fi
-  if herdr plugin list 2>/dev/null | grep -qF "$PLUGIN_ID"; then
-    log "  ok  plugin $PLUGIN_ID linked"
+
+  if ! plugin_inspect "$PLUGIN_ID"; then
+    log "  invalid  plugin $PLUGIN_ID registry/list entry is ambiguous or malformed"
+    missing=$((missing + 1))
+  elif plugin_is_exact_local "$HERDR_PLUGIN_DIR"; then
+    if [[ -d "$HERDR_PLUGIN_DIR" ]]; then
+      log "  ok  plugin $PLUGIN_ID [local:$HERDR_PLUGIN_DIR]"
+    else
+      log "  stale  plugin $PLUGIN_ID source directory is missing: $HERDR_PLUGIN_DIR"
+      missing=$((missing + 1))
+    fi
+  elif plugin_is_exact_github "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF"; then
+    log "  ok  plugin $PLUGIN_ID [github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF]"
+  elif [[ "$PLUGIN_STATUS" == "missing" ]]; then
+    log "  missing  plugin $PLUGIN_ID"
+    missing=$((missing + 1))
+  else
+    log "  mismatched  plugin $PLUGIN_ID preserved [${PLUGIN_SOURCE_RAW#- }]"
+    missing=$((missing + 1))
+  fi
+
+  doctor_adopted_plugin pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF" || missing=$((missing + 1))
+  doctor_adopted_plugin worktrunk "$WORKTRUNK_PLUGIN_REPO" "$WORKTRUNK_PLUGIN_REF" || missing=$((missing + 1))
+  [[ "$missing" -eq 0 ]]
+}
+
+doctor_adopted_plugin() {
+  local id="$1" repo="$2" ref="$3"
+  if ! plugin_inspect "$id"; then
+    log "  invalid  third-party plugin $id registry/list entry is ambiguous or malformed"
+    return 1
+  fi
+  if plugin_is_exact_github "$repo" "$ref"; then
+    log "  ok  third-party plugin $id [github:$repo@$ref]"
     return 0
   fi
-  log "  missing  plugin $PLUGIN_ID"
-  return 1
+  if [[ "$PLUGIN_STATUS" == "missing" ]]; then
+    log "  missing  third-party plugin $id"
+    return 1
+  fi
+  log "  warning  third-party plugin $id is pre-existing and preserved [${PLUGIN_SOURCE_RAW#- }]"
+  return 0
 }

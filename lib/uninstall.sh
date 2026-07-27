@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 
 uninstall_agentic_dev() {
+  local managed_plugin_kind="" remove_managed_plugin_files=0
   info "uninstalling agentic-dev-setup..."
 
   remove_marker_block "$(shell_rc_for bash)"
@@ -29,18 +30,39 @@ uninstall_agentic_dev() {
   fi
 
   if command -v herdr >/dev/null 2>&1; then
-    if confirm "Unlink Herdr plugin $PLUGIN_ID?"; then
-      run herdr plugin unlink "$PLUGIN_ID" 2>/dev/null || true
+    if ! plugin_inspect "$PLUGIN_ID"; then
+      warn "cannot inspect Herdr plugin $PLUGIN_ID; preserving its registration and files"
+    elif plugin_is_exact_local "$HERDR_PLUGIN_DIR"; then
+      managed_plugin_kind="local"
+      if confirm "Unlink managed Herdr plugin $PLUGIN_ID?"; then
+        if _plugin_remove_registration "$PLUGIN_ID" "$managed_plugin_kind"; then
+          remove_managed_plugin_files=1
+        else
+          warn "failed to unlink $PLUGIN_ID; keeping its source directory"
+        fi
+      fi
+    elif [[ "$PLUGIN_STATUS" == "present" \
+      && "$PLUGIN_SOURCE_KIND" == "github" \
+      && "$PLUGIN_SOURCE_REPO" == "$DEV_LAYOUT_PLUGIN_REPO" ]]; then
+      managed_plugin_kind="github"
+      if confirm "Uninstall managed Herdr plugin $PLUGIN_ID?"; then
+        _plugin_remove_registration "$PLUGIN_ID" "$managed_plugin_kind" || warn "failed to uninstall $PLUGIN_ID"
+      fi
+    elif [[ "$PLUGIN_STATUS" == "present" ]]; then
+      warn "preserving unowned Herdr plugin $PLUGIN_ID: ${PLUGIN_SOURCE_RAW#- }"
     fi
   fi
 
-  if confirm "Also remove herdr config, plugin files, and worktrunk configs we installed?"; then
+  if confirm "Also remove managed herdr config and integration files?"; then
     run rm -f "$HERDR_CONFIG_DIR/config.toml"
-    run rm -rf "$HERDR_PLUGIN_DIR"
-    run rm -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh"
-    if confirm "Remove worktrunk config.toml hooks too?"; then
-      run rm -f "$WORKTRUNK_CONFIG_DIR/config.toml"
+    if [[ "$remove_managed_plugin_files" -eq 1 ]]; then
+      run rm -rf "$HERDR_PLUGIN_DIR"
+    elif [[ -e "$HERDR_PLUGIN_DIR" ]]; then
+      info "keeping Herdr plugin files without confirmed managed ownership: $HERDR_PLUGIN_DIR"
     fi
+    run rm -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh"
+    [[ ! -e "$WORKTRUNK_CONFIG_DIR/config.toml" ]] \
+      || info "keeping third-party worktrunk config: $WORKTRUNK_CONFIG_DIR/config.toml"
   fi
 
   if confirm "Remove fcitx5 keyboard.conf override?"; then
