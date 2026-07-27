@@ -44,31 +44,49 @@ load_libs() {
 }
 
 cmd_doctor() {
+  local failures=0 shell_rc
   log "agentic-dev doctor (v${AGENTIC_DEV_VERSION})"
   log ""
   log "Platform: $(detect_platform)"
   log ""
   log "Dependencies:"
-  doctor_dependencies || true
+  doctor_dependencies || failures=1
   log ""
   log "Integration:"
-  local rc
-  rc="$(shell_rc_for "$(detect_shell_name)")"
-  if has_marker_block "$rc"; then
-    log "  ok  marker block in $rc"
+  shell_rc="$(shell_rc_for "$(detect_shell_name)")"
+  if has_marker_block "$shell_rc"; then
+    log "  ok  marker block in $shell_rc"
   else
-    log "  missing  marker block in $rc"
+    log "  missing  marker block in $shell_rc"
+    failures=1
   fi
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]]; then
     log "  ok  $AGENTIC_DEV_USER_CONFIG (agent=$(read_agent_command))"
   else
     log "  missing  $AGENTIC_DEV_USER_CONFIG"
+    failures=1
   fi
-  [[ -f "$HERDR_CONFIG_DIR/config.toml" ]] && log "  ok  herdr config.toml" || log "  missing  herdr config.toml"
-  [[ -f "$HERDR_PLUGIN_DIR/dev-layout.sh" ]] && log "  ok  dev-layout plugin" || log "  missing  dev-layout plugin"
-  [[ -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" ]] && log "  ok  herdr-layout.sh" || log "  missing  herdr-layout.sh"
-  doctor_plugin || true
-  doctor_omarchy_integration || true
+  if [[ -f "$HERDR_CONFIG_DIR/config.toml" ]]; then
+    log "  ok  herdr config.toml"
+  else
+    log "  missing  herdr config.toml"
+    failures=1
+  fi
+  if [[ -f "$HERDR_PLUGIN_DIR/dev-layout.sh" ]]; then
+    log "  ok  dev-layout plugin"
+  else
+    log "  missing  dev-layout plugin"
+    failures=1
+  fi
+  if [[ -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" ]]; then
+    log "  ok  herdr-layout.sh"
+  else
+    log "  missing  herdr-layout.sh"
+    failures=1
+  fi
+  doctor_plugin || failures=1
+  doctor_omarchy_integration || failures=1
+  return "$failures"
 }
 
 cmd_update() {

@@ -523,6 +523,9 @@ deploy_lib() {
 
 deploy_plugin() {
   local src dest
+  if command -v herdr >/dev/null 2>&1; then
+    require_herdr_min_version || return 1
+  fi
   src="$(install_src_dir)"
   dest="$HERDR_PLUGIN_DIR"
   if [[ -d "$src/plugins/dev-layout" ]]; then

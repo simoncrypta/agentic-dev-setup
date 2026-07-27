@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+HERDR_MIN_VERSION=0.7.5
+
 dep_present() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -64,15 +66,164 @@ install_dep() {
   return 1
 }
 
+herdr_version_at_least() {
+  local current="$1" required="$2"
+  local current_major current_minor current_patch
+  local required_major required_minor required_patch
+
+  [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 2
+  [[ "$required" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 2
+
+  IFS=. read -r current_major current_minor current_patch <<<"$current"
+  IFS=. read -r required_major required_minor required_patch <<<"$required"
+
+  ((10#$current_major > 10#$required_major)) && return 0
+  ((10#$current_major < 10#$required_major)) && return 1
+  ((10#$current_minor > 10#$required_minor)) && return 0
+  ((10#$current_minor < 10#$required_minor)) && return 1
+  ((10#$current_patch >= 10#$required_patch))
+}
+
+herdr_parse_version() {
+  local output="$1" token
+  local -a tokens
+  output="${output//$'\n'/ }"
+  IFS=$' \t\r\n' read -r -a tokens <<<"$output"
+  for token in "${tokens[@]}"; do
+    token="${token#v}"
+    if [[ "$token" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  done
+  return 2
+}
+
+herdr_version_output() {
+  local herdr_path output_file pid rc
+  local elapsed=0 grace_elapsed=0
+  local timeout_seconds="${HERDR_VERSION_TIMEOUT_SECONDS:-5}"
+  local term_grace_tenths="${HERDR_VERSION_TERM_GRACE_TENTHS:-10}"
+
+  herdr_path="$(command -v herdr)" || return 127
+  output_file="$(mktemp)"
+  "$herdr_path" --version >"$output_file" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if ((elapsed >= timeout_seconds * 10)); then
+      kill -TERM "$pid" 2>/dev/null || true
+      while kill -0 "$pid" 2>/dev/null && ((grace_elapsed < term_grace_tenths)); do
+        sleep 0.1
+        grace_elapsed=$((grace_elapsed + 1))
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
+      wait "$pid" 2>/dev/null || true
+      rm -f "$output_file"
+      return 124
+    fi
+    sleep 0.1
+    elapsed=$((elapsed + 1))
+  done
+  if wait "$pid"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  cat "$output_file"
+  rm -f "$output_file"
+  return "$rc"
+}
+
+herdr_installed_version() {
+  local output rc
+  if output="$(herdr_version_output)"; then
+    herdr_parse_version "$output"
+    return $?
+  else
+    rc=$?
+    return "$rc"
+  fi
+}
+
+herdr_install_manager() {
+  local herdr_path link_target updater_dir
+  herdr_path="$(command -v herdr)"
+  link_target="$(readlink "$herdr_path" 2>/dev/null || true)"
+
+  case "$herdr_path $link_target" in
+    *'/nix/store/'*|*'/.nix-profile/'*) printf 'nix\n'; return 0 ;;
+    *'/.local/share/mise/'*|*'/.mise/'*) printf 'mise\n'; return 0 ;;
+    *'/Homebrew/'*|*'/homebrew/'*|*'/linuxbrew/'*|*'/Cellar/'*) printf 'brew\n'; return 0 ;;
+  esac
+
+  updater_dir="${HERDR_INSTALL_DIR:-$HOME/.local/bin}"
+  if [[ "$herdr_path" == "$updater_dir/herdr" ]]; then
+    printf 'updater\n'
+  else
+    printf 'manual\n'
+  fi
+}
+
+herdr_upgrade_command() {
+  case "$1" in
+    brew) printf 'brew upgrade herdr\n' ;;
+    mise) printf 'mise use -g herdr\n' ;;
+    nix) printf 'nix profile upgrade <index-or-name>\n' ;;
+    updater) printf 'herdr update --handoff\n' ;;
+    *) printf 'reinstall Herdr >=%s using the method that owns %s\n' \
+      "$HERDR_MIN_VERSION" "$(command -v herdr)" ;;
+  esac
+}
+
+require_herdr_min_version() {
+  local found manager command
+  if ! found="$(herdr_installed_version)"; then
+    warn "cannot determine Herdr version (required >=$HERDR_MIN_VERSION)"
+    return 1
+  fi
+  if herdr_version_at_least "$found" "$HERDR_MIN_VERSION"; then
+    info "present: herdr $found (required >=$HERDR_MIN_VERSION)"
+    return 0
+  fi
+
+  manager="$(herdr_install_manager)"
+  command="$(herdr_upgrade_command "$manager")"
+  if [[ "$manager" != updater ]]; then
+    warn "Herdr $found is below required >=$HERDR_MIN_VERSION; run: $command"
+    return 1
+  fi
+
+  info "updating Herdr $found to >=$HERDR_MIN_VERSION with live handoff"
+  if ! run "$(command -v herdr)" update --handoff; then
+    warn "Herdr update failed; run: $command"
+    return 1
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  if ! found="$(herdr_installed_version)"; then
+    warn "Herdr update reported success but its version is unreadable; run: $command"
+    return 1
+  fi
+  if ! herdr_version_at_least "$found" "$HERDR_MIN_VERSION"; then
+    warn "Herdr update reported success but found $found; required >=$HERDR_MIN_VERSION; run: $command"
+    return 1
+  fi
+  info "updated: herdr $found (required >=$HERDR_MIN_VERSION)"
+}
+
 install_herdr_binary() {
   if dep_present herdr; then
-    info "present: herdr"
-    return 0
+    require_herdr_min_version
+    return $?
   fi
   if has_brew; then
     info "installing via brew: herdr"
     if run brew install herdr && dep_present herdr; then
-      return 0
+      require_herdr_min_version
+      return $?
     fi
     warn "brew install herdr failed — trying herdr.dev installer"
   fi
@@ -82,7 +233,11 @@ install_herdr_binary() {
     return 0
   fi
   curl -fsSL https://herdr.dev/install.sh | sh
-  dep_present herdr || warn "herdr install may have succeeded but herdr is not on PATH"
+  if ! dep_present herdr; then
+    warn "herdr install may have succeeded but herdr is not on PATH"
+    return 1
+  fi
+  require_herdr_min_version
 }
 
 install_worktrunk_binary() {
@@ -203,7 +358,10 @@ install_tuicr_binary() {
 install_dependencies() {
   info "checking dependencies..."
 
-  install_herdr_binary || warn "missing herdr"
+  install_herdr_binary || {
+    warn "Herdr >=$HERDR_MIN_VERSION is required"
+    return 1
+  }
   install_dep git git git git || true
   install_worktrunk_binary || true
   install_dep fzf fzf fzf fzf || true
@@ -214,9 +372,33 @@ install_dependencies() {
 }
 
 doctor_dependencies() {
-  local missing=0
+  local missing=0 found path output rc
   for cmd in herdr git wt fzf jq tuicr nvim lazygit; do
-    if dep_present "$cmd"; then
+    if [[ "$cmd" == herdr ]] && dep_present herdr; then
+      path="$(command -v herdr)"
+      if output="$(herdr_version_output)"; then
+        if found="$(herdr_parse_version "$output")"; then
+          if herdr_version_at_least "$found" "$HERDR_MIN_VERSION"; then
+            log "  ok  herdr ($path; found $found, required >=$HERDR_MIN_VERSION)"
+          else
+            log "  outdated  herdr ($path; found $found, required >=$HERDR_MIN_VERSION)"
+            missing=$((missing + 1))
+          fi
+        else
+          log "  invalid  herdr ($path; found unrecognized output, required >=$HERDR_MIN_VERSION)"
+          missing=$((missing + 1))
+        fi
+      else
+        rc=$?
+        if [[ "$rc" -eq 124 ]]; then
+          found="timeout"
+        else
+          found="unavailable"
+        fi
+        log "  invalid  herdr ($path; found $found, required >=$HERDR_MIN_VERSION)"
+        missing=$((missing + 1))
+      fi
+    elif dep_present "$cmd"; then
       log "  ok  $cmd ($(command -v "$cmd"))"
     else
       log "  missing  $cmd"

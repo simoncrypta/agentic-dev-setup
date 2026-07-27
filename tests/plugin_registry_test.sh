@@ -99,7 +99,7 @@ reset_fixture() {
     FAKE_HERDR_SIGNAL_INSTALL FAKE_HERDR_LIST_OUTPUT FAKE_HERDR_FAIL_ALL_INSTALL \
     FAKE_HERDR_FAIL_REMOVE FAKE_HERDR_SIGNAL_AFTER_REMOVE FAKE_HERDR_DOUBLE_TERM \
     FAKE_HERDR_UNTRUSTED_PLUGIN_ROOT FAKE_HERDR_SWAP_MANAGED_ROOT \
-    FAKE_HERDR_SWAP_MANAGED_ROOT_TARGET
+    FAKE_HERDR_SWAP_MANAGED_ROOT_TARGET FAKE_HERDR_VERSION_OUTPUT
 }
 
 mkdir -p "$FAKE_BIN"
@@ -109,6 +109,11 @@ set -euo pipefail
 
 registry="${XDG_CONFIG_HOME}/herdr/plugins.json"
 printf '%s\n' "$*" >>"$HERDR_CALL_LOG"
+
+if [[ "${1:-}" == "--version" ]]; then
+  printf '%s\n' "${FAKE_HERDR_VERSION_OUTPUT:-herdr 0.7.5}"
+  exit 0
+fi
 
 write_entry() {
   local entry="$1" tmp="${registry}.tmp"
@@ -244,6 +249,8 @@ export INSTALL_SRC="$ROOT"
 
 # shellcheck source=lib/common.sh
 source "$ROOT/lib/common.sh"
+# shellcheck source=lib/deps.sh
+source "$ROOT/lib/deps.sh"
 # shellcheck source=lib/config.sh
 source "$ROOT/lib/config.sh"
 # shellcheck source=lib/detect.sh
@@ -449,6 +456,32 @@ test_repeated_local_deploy() {
   grep -q 'unchanged: Herdr plugin agentic-dev.dev-layout linked' "$second_log" \
     || fail "second deploy did not report exact local no-op"
   printf 'PASS: repeated local install/update has no plugin mutations\n'
+}
+
+test_deploy_refuses_incompatible_herdr_before_mutation() {
+  local version before_registry after_registry before_source after_source
+  for version in 'herdr 0.7.1' 'herdr version unknown'; do
+    reset_fixture
+    mkdir -p "$HERDR_PLUGIN_DIR"
+    printf 'keep-source\n' >"$HERDR_PLUGIN_DIR/sentinel"
+    seed_github pickr someone/custom-pickr keep-ref
+    before_registry="$(checksum "$(registry_path)")"
+    before_source="$(checksum "$HERDR_PLUGIN_DIR/sentinel")"
+    export FAKE_HERDR_VERSION_OUTPUT="$version"
+    if deploy_plugin >/dev/null 2>&1; then
+      fail "deploy accepted incompatible Herdr output: $version"
+    fi
+    after_registry="$(checksum "$(registry_path)")"
+    after_source="$(checksum "$HERDR_PLUGIN_DIR/sentinel")"
+    assert_eq "$before_registry" "$after_registry" \
+      "incompatible Herdr changed plugin registry: $version"
+    assert_eq "$before_source" "$after_source" \
+      "incompatible Herdr changed existing plugin destination: $version"
+    assert_eq '1' "$(find "$HERDR_PLUGIN_DIR" -type f | wc -l | tr -d ' ')" \
+      "incompatible Herdr added files to plugin destination: $version"
+    assert_log_count '^plugin (list|link|install|unlink|uninstall) ' 0
+  done
+  printf 'PASS: incompatible Herdr blocks deploy before file/registry mutation\n'
 }
 
 test_dry_run_describes_without_mutation() {
@@ -740,6 +773,7 @@ test_legacy_migration_and_rollback
 test_github_update_rollback
 test_third_party_policy
 test_repeated_local_deploy
+test_deploy_refuses_incompatible_herdr_before_mutation
 test_dry_run_describes_without_mutation
 test_doctor_source_checks
 test_stale_and_misleading_state
