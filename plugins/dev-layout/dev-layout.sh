@@ -481,6 +481,72 @@ _select_tab_index() {
   _herdr_json tab focus "$tab_id" >/dev/null
 }
 
+_workspace_is_live() {
+  local workspace_id="$1"
+  local list_json found
+
+  list_json="$(_herdr_json workspace list)" || return 2
+  found="$(printf '%s' "$list_json" | _jq --arg id "$workspace_id" \
+    '.result.workspaces[]? | select(.workspace_id == $id) | .workspace_id' \
+    | head -1)" || return 2
+  [[ -n "$found" ]]
+}
+
+_reconcile_live_state() {
+  local state="$1"
+  local agent_pane tab tool_pane next
+
+  next="$state"
+  agent_pane="$(printf '%s' "$next" | _jq '.agent_pane_id // empty')"
+  if [[ -n "$agent_pane" ]] && ! _pane_exists "$agent_pane"; then
+    next="$(printf '%s' "$next" | jq '.agent_pane_id = ""')"
+  fi
+
+  for tab in "${TABS[@]}"; do
+    tool_pane="$(_state_get_tool_pane "$next" "$tab")"
+    if [[ -n "$tool_pane" ]] && ! _pane_exists "$tool_pane"; then
+      next="$(printf '%s' "$next" | jq --arg tab "$tab" \
+        'if (.tabs[$tab] | type) == "object" then .tabs[$tab].tool_pane_id = "" else . end')"
+    fi
+  done
+
+  printf '%s' "$next"
+}
+
+_on_startup() {
+  local state_dir path workspace_id state reconciled live_status
+
+  state_dir="$(_state_dir)"
+  [[ -d "$state_dir" ]] || return 0
+
+  shopt -s nullglob
+  for path in "$state_dir"/*.json; do
+    [[ -f "$path" ]] || continue
+    workspace_id="${path##*/}"
+    workspace_id="${workspace_id%.json}"
+
+    state="$(_state_probe "$workspace_id" 2>/dev/null || true)"
+    [[ -n "$state" ]] || continue
+
+    live_status=0
+    _workspace_is_live "$workspace_id" || live_status=$?
+    if [[ "$live_status" -eq 1 ]]; then
+      _state_delete "$workspace_id"
+      continue
+    fi
+    if [[ "$live_status" -ne 0 ]]; then
+      # Workspace list failed: preserve state rather than delete.
+      continue
+    fi
+
+    reconciled="$(_reconcile_live_state "$state")"
+    if [[ "$reconciled" != "$state" ]]; then
+      _state_save "$workspace_id" "$reconciled"
+    fi
+  done
+  shopt -u nullglob
+}
+
 _on_pane_exited() {
   local pane_id="${1:-}"
   local workspace_id state agent_pane
@@ -525,6 +591,9 @@ main() {
     create|apply)
       _resolve_context
       _select_tab review
+      ;;
+    startup)
+      _on_startup
       ;;
     focus_agent)
       _resolve_context

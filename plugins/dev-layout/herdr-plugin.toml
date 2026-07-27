@@ -1,9 +1,12 @@
 id = "agentic-dev.dev-layout"
 name = "Dev Layout"
-version = "0.1.0"
-min_herdr_version = "0.7.0"
+version = "0.2.0"
+min_herdr_version = "0.7.5"
 description = "Sticky agent pane with review, explorer, and terminal tabs"
 platforms = ["linux", "macos"]
+
+[[startup]]
+command = ["bash", "dev-layout.sh", "startup"]
 
 [[actions]]
 id = "create"
