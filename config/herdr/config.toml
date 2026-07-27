@@ -67,20 +67,20 @@ description = "Terminal tab"
 [[keys.command]]
 key = "alt+1"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_review"
-description = "Review tab (tuicr)"
+command = "agentic-dev.dev-layout.alt_review"
+description = "Review tab, or first tab outside dev workspaces"
 
 [[keys.command]]
 key = "alt+2"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_explorer"
-description = "Explorer tab (nvim)"
+command = "agentic-dev.dev-layout.alt_explorer"
+description = "Explorer tab, or second tab outside dev workspaces"
 
 [[keys.command]]
 key = "alt+3"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_terminal"
-description = "Terminal tab"
+command = "agentic-dev.dev-layout.alt_terminal"
+description = "Terminal tab, or third tab outside dev workspaces"
 
 [[keys.command]]
 key = "prefix+shift+g"

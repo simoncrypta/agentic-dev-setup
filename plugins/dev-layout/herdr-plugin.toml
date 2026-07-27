@@ -41,6 +41,24 @@ title = "Terminal tab"
 contexts = ["workspace"]
 command = ["bash", "dev-layout.sh", "select_terminal"]
 
+[[actions]]
+id = "alt_review"
+title = "Review tab or first tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "alt_review"]
+
+[[actions]]
+id = "alt_explorer"
+title = "Explorer tab or second tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "alt_explorer"]
+
+[[actions]]
+id = "alt_terminal"
+title = "Terminal tab or third tab"
+contexts = ["workspace"]
+command = ["bash", "dev-layout.sh", "alt_terminal"]
+
 [[events]]
 on = "pane.exited"
 command = ["bash", "dev-layout.sh", "event_pane_exited"]

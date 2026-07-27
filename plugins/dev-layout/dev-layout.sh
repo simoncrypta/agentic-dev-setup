@@ -401,18 +401,33 @@ _layout_ensure() {
   printf '%s' "$state"
 }
 
+_dev_workspace_id() {
+  if [[ -n "${HERDR_WORKSPACE_ID:-}" ]]; then
+    printf '%s' "$HERDR_WORKSPACE_ID"
+    return 0
+  fi
+  _focused_workspace_id
+}
+
+_dev_state() {
+  local workspace_id
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 1
+  _state_probe "$workspace_id"
+}
+
 _select_tab() {
   local tab="$1"
   local state workspace_id tab_id
 
-  state="$(_layout_ensure)"
+  state="$(_dev_state)" || return 0
   workspace_id="$(printf '%s' "$state" | _jq '.workspace_id')"
   tab_id="$(_state_get_tab_id "$state" "$tab")"
+  [[ -n "$tab_id" ]] || return 0
 
   _attach_agent_to_tab "$state" "$tab"
   _herdr_json tab focus "$tab_id" >/dev/null
   if [[ "$tab" != "agent" ]]; then
-    _herdr_json tab focus "$tab_id" >/dev/null
     _herdr_json pane focus --direction right >/dev/null 2>&1 || true
   fi
 
@@ -423,19 +438,47 @@ _select_tab() {
 _focus_agent() {
   local state workspace_id tab agent_pane tab_id
 
-  state="$(_layout_ensure)"
+  state="$(_dev_state)" || return 0
   workspace_id="$(printf '%s' "$state" | _jq '.workspace_id')"
   tab="$(printf '%s' "$state" | _jq '.active_tab // "review"')"
   agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
   tab_id="$(_state_get_tab_id "$state" "$tab")"
 
-  _attach_agent_to_tab "$state" "$tab"
-  _herdr_json tab focus "$tab_id" >/dev/null
+  if ! _pane_exists "$agent_pane"; then
+    local workdir
+    workdir="$(printf '%s' "$state" | _jq '.workdir')"
+    agent_pane="$(_ensure_agent_pane "$workspace_id" "$workdir" "$state" "$tab" 2>/dev/null || true)"
+    if [[ -n "$agent_pane" ]]; then
+      state="$(printf '%s' "$state" | jq --arg agent "$agent_pane" '.agent_pane_id = $agent')"
+      _state_save "$workspace_id" "$state"
+    fi
+  else
+    _attach_agent_to_tab "$state" "$tab"
+  fi
+
+  [[ -z "$tab_id" ]] || _herdr_json tab focus "$tab_id" >/dev/null
   if _pane_exists "$agent_pane"; then
     _herdr_json agent focus "$agent_pane" >/dev/null 2>&1 \
       || _herdr_json pane focus --direction left >/dev/null 2>&1 \
       || true
   fi
+}
+
+_select_tab_index() {
+  local index="$1" semantic="$2"
+  local workspace_id tab_id
+
+  if _dev_state >/dev/null 2>&1; then
+    _select_tab "$semantic"
+    return 0
+  fi
+
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 0
+  tab_id="$(_herdr_json tab list --workspace "$workspace_id" \
+    | _jq --argjson index "$index" '.result.tabs[$index].tab_id // empty')"
+  [[ -n "$tab_id" ]] || return 0
+  _herdr_json tab focus "$tab_id" >/dev/null
 }
 
 _on_pane_exited() {
@@ -490,6 +533,9 @@ main() {
     select_review) _resolve_context; _select_tab review ;;
     select_explorer) _resolve_context; _select_tab explorer ;;
     select_terminal) _resolve_context; _select_tab terminal ;;
+    alt_review) _resolve_context; _select_tab_index 0 review ;;
+    alt_explorer) _resolve_context; _select_tab_index 1 explorer ;;
+    alt_terminal) _resolve_context; _select_tab_index 2 terminal ;;
     event_pane_exited|pane.exited)
       local pane_id
       pane_id="$(printf '%s' "${HERDR_PLUGIN_EVENT_JSON:-{}}" | _jq '.pane_id // .pane.pane_id // empty' 2>/dev/null || true)"
