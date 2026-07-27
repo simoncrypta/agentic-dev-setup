@@ -148,11 +148,11 @@ doctor_plugin() {
   if ! plugin_inspect "$PLUGIN_ID"; then
     log "  invalid  plugin $PLUGIN_ID registry/list entry is ambiguous or malformed"
     missing=$((missing + 1))
-  elif plugin_is_exact_local "$HERDR_PLUGIN_DIR"; then
-    if [[ -d "$HERDR_PLUGIN_DIR" ]]; then
-      log "  ok  plugin $PLUGIN_ID [local:$HERDR_PLUGIN_DIR]"
+  elif plugin_is_exact_local "$HERDR_DEV_LAYOUT_LEGACY_DIR"; then
+    if [[ -d "$HERDR_DEV_LAYOUT_LEGACY_DIR" ]]; then
+      log "  ok  plugin $PLUGIN_ID [local:$HERDR_DEV_LAYOUT_LEGACY_DIR] (legacy)"
     else
-      log "  stale  plugin $PLUGIN_ID source directory is missing: $HERDR_PLUGIN_DIR"
+      log "  stale  plugin $PLUGIN_ID source directory is missing: $HERDR_DEV_LAYOUT_LEGACY_DIR"
       missing=$((missing + 1))
     fi
   elif plugin_is_exact_github "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF"; then

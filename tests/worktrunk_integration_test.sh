@@ -166,7 +166,7 @@ source "$ROOT/lib/deps.sh"
 source "$ROOT/lib/config.sh"
 
 HERDR_CONFIG_DIR="$XDG_CONFIG_HOME/herdr"
-HERDR_PLUGIN_DIR="$HERDR_CONFIG_DIR/plugins/dev-layout"
+HERDR_DEV_LAYOUT_LEGACY_DIR="$HERDR_CONFIG_DIR/plugins/dev-layout"
 export AGENTIC_DEV_CONFIG_DIR="$XDG_CONFIG_HOME/agentic-dev"
 export AGENTIC_DEV_SHELL_DIR="$AGENTIC_DEV_CONFIG_DIR/shell"
 export AGENTIC_DEV_USER_CONFIG="$AGENTIC_DEV_CONFIG_DIR/config.toml"

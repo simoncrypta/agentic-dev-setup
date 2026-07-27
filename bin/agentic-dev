@@ -72,10 +72,12 @@ cmd_doctor() {
     log "  missing  herdr config.toml"
     failures=1
   fi
-  if [[ -f "$HERDR_PLUGIN_DIR/dev-layout.sh" ]]; then
-    log "  ok  dev-layout plugin"
+  if plugin_inspect "$PLUGIN_ID" && plugin_is_exact_github "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF"; then
+    log "  ok  plugin $PLUGIN_ID [github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF]"
+  elif plugin_inspect "$PLUGIN_ID" && plugin_is_exact_local "$HERDR_DEV_LAYOUT_LEGACY_DIR"; then
+    log "  ok  plugin $PLUGIN_ID [local:$HERDR_DEV_LAYOUT_LEGACY_DIR] (legacy; migrate on update)"
   else
-    log "  missing  dev-layout plugin"
+    log "  missing  managed plugin $PLUGIN_ID [github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF]"
     failures=1
   fi
   if [[ -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" ]]; then

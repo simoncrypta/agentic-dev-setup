@@ -32,7 +32,7 @@ uninstall_agentic_dev() {
   if command -v herdr >/dev/null 2>&1; then
     if ! plugin_inspect "$PLUGIN_ID"; then
       warn "cannot inspect Herdr plugin $PLUGIN_ID; preserving its registration and files"
-    elif plugin_is_exact_local "$HERDR_PLUGIN_DIR"; then
+    elif plugin_is_exact_local "$HERDR_DEV_LAYOUT_LEGACY_DIR"; then
       managed_plugin_kind="local"
       if confirm "Unlink managed Herdr plugin $PLUGIN_ID?"; then
         if _plugin_remove_registration "$PLUGIN_ID" "$managed_plugin_kind"; then
@@ -56,9 +56,9 @@ uninstall_agentic_dev() {
   if confirm "Also remove managed herdr config and integration files?"; then
     run rm -f "$HERDR_CONFIG_DIR/config.toml"
     if [[ "$remove_managed_plugin_files" -eq 1 ]]; then
-      run rm -rf "$HERDR_PLUGIN_DIR"
-    elif [[ -e "$HERDR_PLUGIN_DIR" ]]; then
-      info "keeping Herdr plugin files without confirmed managed ownership: $HERDR_PLUGIN_DIR"
+      run rm -rf "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+    elif [[ -e "$HERDR_DEV_LAYOUT_LEGACY_DIR" ]]; then
+      info "keeping Herdr plugin files without confirmed managed ownership: $HERDR_DEV_LAYOUT_LEGACY_DIR"
     fi
     run rm -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh"
     [[ ! -e "$WORKTRUNK_CONFIG_DIR/config.toml" ]] \

@@ -548,27 +548,17 @@ deploy_lib() {
 }
 
 deploy_plugin() {
-  local src dest
   if command -v herdr >/dev/null 2>&1; then
     require_herdr_min_version || return 1
-  fi
-  src="$(install_src_dir)"
-  dest="$HERDR_PLUGIN_DIR"
-  if [[ -d "$src/plugins/dev-layout" ]]; then
-    deploy_tree "$src/plugins/dev-layout" "$dest"
-  else
-    ensure_dir "$dest"
-    deploy_install_file "plugins/dev-layout/herdr-plugin.toml" "$dest/herdr-plugin.toml"
-    deploy_install_file "plugins/dev-layout/dev-layout.sh" "$dest/dev-layout.sh"
-  fi
-  [[ -x "$dest/dev-layout.sh" ]] || run chmod +x "$dest/dev-layout.sh"
-
-  if command -v herdr >/dev/null 2>&1; then
-    ensure_managed_local_plugin "$PLUGIN_ID" "$dest"
+    ensure_managed_github_plugin \
+      "$PLUGIN_ID" \
+      "$DEV_LAYOUT_PLUGIN_REPO" \
+      "$DEV_LAYOUT_PLUGIN_REF" \
+      "$HERDR_DEV_LAYOUT_LEGACY_DIR"
     deploy_third_party_plugins
     deploy_pickr_config
   else
-    warn "herdr not on PATH — plugin copied but not linked"
+    warn "herdr not on PATH — skipping managed plugin install ($DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF)"
   fi
 }
 
