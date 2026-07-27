@@ -412,6 +412,32 @@ deploy_third_party_plugins() {
   ensure_adopted_github_plugin worktrunk "$WORKTRUNK_PLUGIN_REPO" "$WORKTRUNK_PLUGIN_REF"
 }
 
+pickr_template_for_platform() {
+  case "$(detect_os)" in
+    linux) printf '%s' "config/pickr/config.linux.toml" ;;
+    macos) printf '%s' "config/pickr/config.macos.toml" ;;
+    *) return 1 ;;
+  esac
+}
+
+deploy_pickr_config() {
+  local config_dir dest template_rel
+  if ! config_dir="$(herdr plugin config-dir pickr 2>/dev/null)" || [[ "$config_dir" != /* ]]; then
+    warn "cannot resolve the pickr plugin config dir; keeping any existing pickr config"
+    return 0
+  fi
+  dest="$config_dir/config.toml"
+  if [[ -e "$dest" || -L "$dest" ]]; then
+    info "keeping existing pickr config: $dest"
+    return 0
+  fi
+  if ! template_rel="$(pickr_template_for_platform)"; then
+    warn "no portable pickr defaults for platform $(detect_os); skipping"
+    return 0
+  fi
+  deploy_install_file "$template_rel" "$dest"
+}
+
 prompt_agent_command() {
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$RECONFIGURE" -ne 1 ]]; then
     info "using existing agent command: $(read_agent_command)"
@@ -540,6 +566,7 @@ deploy_plugin() {
   if command -v herdr >/dev/null 2>&1; then
     ensure_managed_local_plugin "$PLUGIN_ID" "$dest"
     deploy_third_party_plugins
+    deploy_pickr_config
   else
     warn "herdr not on PATH — plugin copied but not linked"
   fi
