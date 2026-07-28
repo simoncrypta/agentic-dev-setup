@@ -179,12 +179,12 @@ case "${1:-} ${2:-}" in
       esac
     done
     if [[ "${FAKE_HERDR_SIGNAL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.0}" ]]; then
+      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.1}" ]]; then
       kill -TERM "$PPID"
       exit 143
     fi
     if [[ "${FAKE_HERDR_FAIL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.0}" ]]; then
+      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.1}" ]]; then
       exit 42
     fi
     [[ "${FAKE_HERDR_FAIL_ALL_INSTALL:-0}" != 1 ]] || exit 42
@@ -305,7 +305,7 @@ run_failing_first_proofs() {
   if ! declare -F ensure_managed_github_plugin >/dev/null; then
     printf 'FAILING-FIRST: transactional migration helper is absent\n' >&2
     failures=$((failures + 1))
-  elif ensure_managed_github_plugin agentic-dev.dev-layout simoncrypta/herdr-dev-layout v0.2.0 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
+  elif ensure_managed_github_plugin agentic-dev.dev-layout simoncrypta/herdr-dev-layout v0.2.1 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     printf 'FAILING-FIRST: injected migration failure returned success\n' >&2
     failures=$((failures + 1))
   fi

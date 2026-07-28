@@ -54,7 +54,7 @@ read_layout_editor() {
 RECONFIGURE=0
 
 export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
-export DEV_LAYOUT_PLUGIN_REF="v0.2.0"
+export DEV_LAYOUT_PLUGIN_REF="v0.2.1"
 PICKR_PLUGIN_REPO="tomasvarga/herdr-pickr"
 PICKR_PLUGIN_REF="e393ef593e44d2497f43d20aa7b0e4a26ea3d445"
 WORKTRUNK_PLUGIN_REPO="devashish2203/herdr-worktrunk"
