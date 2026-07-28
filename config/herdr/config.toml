@@ -1,3 +1,11 @@
+# Herdr keybindings inspired by Omarchy tmux:
+# https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys#tmux
+#
+# Split of responsibility:
+# - Native Herdr keys own panes/tabs/workspaces (Omarchy session/window analogs)
+# - Dev-layout plugin owns the sticky-agent layout
+# - herdr-worktrunk owns git worktree pickers (not workspace close)
+
 onboarding = false
 
 [theme]
@@ -13,20 +21,34 @@ default_shell = "bash"
 [keys]
 prefix = "ctrl+space"
 
+# Workspaces ≈ Omarchy tmux sessions (Alt+Up/Down)
 previous_workspace = "alt+up"
 next_workspace = "alt+down"
-previous_tab = ["prefix+p", "alt+left"]
-next_tab = ["prefix+n", "alt+right"]
 workspace_picker = "prefix+w"
+new_workspace = "prefix+shift+n"
+rename_workspace = "prefix+shift+w"
+close_workspace = "prefix+shift+k"
 detach = "prefix+shift+q"
 
+# Tabs ≈ Omarchy tmux windows
+new_tab = "prefix+c"
+previous_tab = ["prefix+p", "alt+left"]
+next_tab = ["prefix+n", "alt+right"]
+close_tab = "prefix+k"
+rename_tab = "prefix+shift+t"
+
+# Panes — Omarchy uses Ctrl+Alt+Arrows; we use vim keys (fcitx5-safe on Omarchy)
 split_vertical = "prefix+h"
 split_horizontal = "prefix+v"
-
+close_pane = "prefix+x"
+zoom = "prefix+z"
 focus_pane_left = "ctrl+alt+h"
 focus_pane_down = "ctrl+alt+j"
 focus_pane_up = "ctrl+alt+k"
 focus_pane_right = "ctrl+alt+l"
+
+# Native Herdr new_worktree (prefix+shift+g) is replaced by worktrunk.open below.
+new_worktree = ""
 
 [[keys.command]]
 key = "prefix+q"
@@ -34,6 +56,7 @@ type = "shell"
 command = "herdr server reload-config"
 description = "Reload config"
 
+# --- Dev layout (sticky agent) ---
 [[keys.command]]
 key = "prefix+d"
 type = "plugin_action"
@@ -82,6 +105,9 @@ type = "plugin_action"
 command = "agentic-dev.dev-layout.alt_terminal"
 description = "Terminal tab, or third tab outside dev workspaces"
 
+# --- Git worktrees (herdr-worktrunk plugin) ---
+# Intentionally replaces Herdr's basic new_worktree with the fzf picker.
+# close_workspace stays native on prefix+shift+k (Omarchy kill-session analog).
 [[keys.command]]
 key = "prefix+shift+g"
 type = "plugin_action"
@@ -95,7 +121,7 @@ command = "worktrunk.open-current"
 description = "Worktree: switch / create from current branch"
 
 [[keys.command]]
-key = "prefix+shift+d"
+key = "prefix+shift+r"
 type = "plugin_action"
 command = "worktrunk.remove"
 description = "Worktree: remove"

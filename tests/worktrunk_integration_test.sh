@@ -191,7 +191,7 @@ commands = data.get("keys", {}).get("command", [])
 expected = {
     "prefix+shift+g": "worktrunk.open",
     "prefix+shift+c": "worktrunk.open-current",
-    "prefix+shift+d": "worktrunk.remove",
+    "prefix+shift+r": "worktrunk.remove",
 }
 for key, action in expected.items():
     matches = [entry for entry in commands if entry.get("key") == key]
@@ -209,7 +209,7 @@ PY
 test_herdr_config_keybindings() {
   assert_worktrunk_keybindings "$ROOT/config/herdr/config.toml" \
     || fail "repo Herdr config keybinding assertion failed"
-  printf 'PASS: repo Herdr config binds prefix+shift+g/c/d to worktrunk.open/open-current/remove exactly once\n'
+  printf 'PASS: repo Herdr config binds prefix+shift+g/c/r to worktrunk.open/open-current/remove exactly once\n'
 }
 
 test_missing_installs_selected_sha() {

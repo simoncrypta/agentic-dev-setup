@@ -34,12 +34,18 @@ Layout:
   Tabs: review (tuicr), explorer (nvim), terminal (shell)
 
 Herdr keys (prefix = Ctrl-Space):
-  prefix+D      Apply dev layout in current workspace
-  prefix+1      Focus agent pane (recreates if crashed)
-  prefix+2/3/4  review / explorer / terminal
-  Alt+1/2/3     review / explorer / terminal
-  Ctrl+Alt+HJKL Focus panes left/down/up/right
-  prefix+q      Reload herdr config
+  prefix+D           Apply dev layout in current workspace
+  prefix+1           Focus agent pane (recreates if crashed)
+  prefix+2/3/4       review / explorer / terminal
+  Alt+1/2/3          Same tabs in a dev workspace; else tab 1/2/3
+  Ctrl+Alt+HJKL      Focus panes left/down/up/right
+  Alt+Left/Right     Previous/next tab
+  Alt+Up/Down        Previous/next workspace
+  prefix+w           Workspace picker
+  prefix+shift+k     Close workspace
+  prefix+shift+g/c/r Worktree open / open-current / remove
+  prefix+q           Reload herdr config
+  prefix+shift+q     Detach
 
 Tab switching works without a healthy agent pane. The agent is recreated lazily on
 the next tab switch or prefix+1.

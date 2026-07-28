@@ -29,7 +29,8 @@ cd /path/to/agentic-dev-setup
 ## What you get
 
 - **Herdr layout**: sticky agent pane (left) + tabs for review (`tuicr`), explorer (`nvim`), terminal
-- **Dev layout plugin**: `agentic-dev.dev-layout` (linked automatically)
+- **Dev layout plugin**: `agentic-dev.dev-layout` (pinned from `simoncrypta/herdr-dev-layout`)
+- **Worktrunk plugin**: in-Herdr git worktree pickers (`prefix+shift+g/c/r`)
 - **Shell commands**: `dev`, `wtc`, `wts`, `wtd`, `d`, `t`
 - **worktrunk hooks**: auto-create/close Herdr workspaces on worktree start/remove
 - **Config**: `~/.config/agentic-dev/config.toml` (agent command + editor)
@@ -46,8 +47,8 @@ One Herdr workspace per worktree. The agent pane stays on the left (~50%); tool 
 ├─────────────────────────┬────────────────────────────────────────┤
 │                         │                                        │
 │   agent                 │   active tool tab                      │
-│   (codex / claude /     │                                        │
-│    agent / opencode)    │   review    → tuicr                    │
+│   (agent / codex /      │                                        │
+│    opencode / claude)   │   review    → tuicr                    │
 │                         │   explorer  → nvim (neo-tree)          │
 │   sticky left pane      │   terminal  → shell                    │
 │                         │                                        │
@@ -55,7 +56,7 @@ One Herdr workspace per worktree. The agent pane stays on the left (~50%); tool 
 └─────────────────────────┴────────────────────────────────────────┘
 ```
 
-Prefix is `Ctrl-Space`. `prefix+D` applies this layout in the current workspace.
+Prefix is `Ctrl-Space` (same as [Omarchy tmux](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys#tmux)). `prefix+d` applies this layout in the current workspace.
 
 ### First-run prompt
 
@@ -82,15 +83,79 @@ Saved to `~/.config/agentic-dev/config.toml`. Change later with `agentic-dev rec
 
 ## Herdr keys
 
+Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys#tmux). Bindings live in [`config/herdr/config.toml`](config/herdr/config.toml).
+
+### Roles
+
+| Layer | Owns | Examples |
+|-------|------|----------|
+| Native Herdr | Panes, tabs, workspaces | splits, close workspace, detach |
+| Dev-layout plugin | Sticky agent layout | apply layout, review/explorer/terminal |
+| herdr-worktrunk plugin | Git worktree pickers | open / open-current / remove |
+
+`prefix+shift+d` is **not** bound to worktrunk remove — that key is Herdr’s native close-workspace by default, so remove lives on `prefix+shift+r` instead. Workspace close is on `prefix+shift+k` (Omarchy’s kill-session analog).
+
+### Dev layout
+
 | Key | Action |
 |-----|--------|
-| `prefix+D` | Apply dev layout |
+| `prefix+d` | Apply / ensure sticky-agent layout |
 | `prefix+1` | Focus agent pane (recreates if crashed) |
-| `prefix+2/3/4` | review / explorer / terminal |
-| `Alt+1/2/3` | Same tabs without prefix |
-| `Ctrl+Alt+H/J/K/L` | Focus pane left/down/up/right |
-| `Alt+Up/Down` | Previous/next workspace |
-| `prefix+q` | Reload herdr config |
+| `prefix+2` | Review tab (`tuicr`) |
+| `prefix+3` | Explorer tab (`nvim`) |
+| `prefix+4` | Terminal tab |
+| `Alt+1` / `Alt+2` / `Alt+3` | Same tabs in a **dev** workspace; otherwise focus tab 1/2/3 |
+
+Prefix `1–4` no-op outside a valid dev-layout workspace (they never create a layout). Only `prefix+d` / `create` / `apply` create one.
+
+### Tabs (≈ Omarchy windows)
+
+| Key | Action |
+|-----|--------|
+| `prefix+c` | New tab |
+| `prefix+k` | Close tab |
+| `prefix+shift+t` | Rename tab |
+| `prefix+n` / `Alt+Right` | Next tab |
+| `prefix+p` / `Alt+Left` | Previous tab |
+
+### Workspaces (≈ Omarchy sessions)
+
+| Key | Action |
+|-----|--------|
+| `Alt+Up` / `Alt+Down` | Previous / next workspace |
+| `prefix+w` | Workspace picker |
+| `prefix+shift+n` | New workspace |
+| `prefix+shift+w` | Rename workspace |
+| `prefix+shift+k` | Close workspace |
+| `prefix+shift+q` | Detach |
+
+### Panes
+
+| Key | Action |
+|-----|--------|
+| `prefix+h` | Split below |
+| `prefix+v` | Split beside |
+| `prefix+x` | Close pane |
+| `prefix+z` | Zoom pane |
+| `Ctrl+Alt+H/J/K/L` | Focus left / down / up / right |
+
+Pane focus uses vim keys instead of Omarchy’s `Ctrl+Alt+Arrows` so it stays clear of desktop/arrow chords; on Omarchy/Linux the installer also clears fcitx5’s `Ctrl+Alt+H/J` hint hotkeys.
+
+### Git worktrees (herdr-worktrunk)
+
+| Key | Action |
+|-----|--------|
+| `prefix+shift+g` | Open / create worktree from default branch |
+| `prefix+shift+c` | Open / create worktree from current branch |
+| `prefix+shift+r` | Remove worktree |
+
+Shell equivalents still work outside Herdr: `wtc`, `wts`, `wtd`.
+
+### General
+
+| Key | Action |
+|-----|--------|
+| `prefix+q` | Reload Herdr config |
 
 Tab switching works even when the agent pane is missing — the agent is recreated lazily on the next tab switch or `prefix+1`.
 
