@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+assert_eq() {
+  local expected="$1" actual="$2" msg="${3:-}"
+  [[ "$expected" == "$actual" ]] || fail "${msg}: expected '$expected' got '$actual'"
+}
+
+export HOME="$TMP_DIR/home"
+export XDG_CONFIG_HOME="$HOME/.config"
+mkdir -p "$HOME" "$XDG_CONFIG_HOME"
+
+# shellcheck source=lib/common.sh
+source "$ROOT/lib/common.sh"
+# shellcheck source=lib/config.sh
+source "$ROOT/lib/config.sh"
+# shellcheck source=lib/skills.sh
+source "$ROOT/lib/skills.sh"
+
+export INSTALL_SRC="$ROOT"
+export AGENTIC_DEV_CONFIG_DIR="$XDG_CONFIG_HOME/agentic-dev"
+export AGENTIC_DEV_USER_CONFIG="$AGENTIC_DEV_CONFIG_DIR/config.toml"
+export AGENTS_SKILLS_DIR="$HOME/.agents/skills"
+export AGENTIC_DEV_SKILL_ID="handoff"
+export AGENTIC_DEV_SKILL_DIR="$AGENTS_SKILLS_DIR/handoff"
+YES=1
+DRY_RUN=0
+
+write_agent_config() {
+  local cmd="$1"
+  mkdir -p "$AGENTIC_DEV_CONFIG_DIR"
+  cat >"$AGENTIC_DEV_USER_CONFIG" <<EOF
+[agent]
+command = "$cmd"
+
+[layout]
+editor = "nvim"
+EOF
+}
+
+test_deploy_agents_path_for_cursor() {
+  write_agent_config agent
+  deploy_skills >/dev/null
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing"
+  grep -q '^name: handoff$' "$AGENTIC_DEV_SKILL_DIR/SKILL.md" || fail "skill frontmatter missing"
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/resources/handoff.md" ]] || fail "resource handoff.md missing"
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/MANIFEST" ]] || fail "MANIFEST missing from deploy_tree"
+  [[ ! -e "$HOME/.cursor/skills/handoff" ]] || fail "cursor should use ~/.agents/skills only"
+  printf 'PASS: deploy_skills installs ~/.agents/handoff for cursor/agent\n'
+}
+
+test_reconfigure_scrubs_orphan_extra_link() {
+  write_agent_config codex
+  deploy_skills >/dev/null
+  [[ -L "$HOME/.codex/skills/handoff" ]] || fail "codex skill symlink missing"
+  write_agent_config agent
+  deploy_skills >/dev/null
+  [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "codex orphan link should be scrubbed on reconfigure to agent"
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing after scrub"
+  printf 'PASS: deploy_skills scrubs orphan extra links on agent switch\n'
+}
+
+test_preserve_foreign_skill_path() {
+  write_agent_config opencode
+  mkdir -p "$HOME/.config/opencode/skills/handoff"
+  printf 'foreign\n' >"$HOME/.config/opencode/skills/handoff/SKILL.md"
+  local output
+  output="$(deploy_skills 2>&1)"
+  printf '%s\n' "$output" | grep -q 'preserving pre-existing skill path' \
+    || fail "expected preserve warning for foreign skill dir"
+  grep -qx 'foreign' "$HOME/.config/opencode/skills/handoff/SKILL.md" \
+    || fail "foreign skill contents changed"
+  printf 'PASS: deploy_skills preserves foreign agent skill paths\n'
+}
+
+test_custom_agent_canonical_only() {
+  rm -rf "$HOME/.agents" "$HOME/.cursor" "$HOME/.codex" "$HOME/.config/opencode" "$HOME/.claude"
+  write_agent_config my-custom-agent
+  deploy_skills >/dev/null
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for custom agent"
+  [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "custom agent should not create codex link"
+  printf 'PASS: custom agent installs canonical skill only\n'
+}
+
+test_deploy_agents_path_for_cursor
+test_reconfigure_scrubs_orphan_extra_link
+test_preserve_foreign_skill_path
+test_custom_agent_canonical_only

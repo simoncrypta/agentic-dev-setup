@@ -34,6 +34,7 @@ cd /path/to/agentic-dev-setup
 - **Shell commands**: `dev`, `wtc`, `wts`, `wtd`, `d`, `t`
 - **worktrunk hooks**: auto-create/close Herdr workspaces on worktree start/remove
 - **Config**: `~/.config/agentic-dev/config.toml` (agent command + editor)
+- **Agent skill**: `handoff` at `~/.agents/skills/handoff` ([Agent Skills](https://agentskills.io/home)); extra symlink only for agents that do not read that path
 - **Omarchy/Linux**: fcitx5 hint hotkeys cleared (`Ctrl+Alt+H/J`); optional Hyprland binding patch
 - **Ubuntu/Debian**: apt installs for common deps; tuicr/herdr/worktrunk via GitHub when needed
 
@@ -69,6 +70,28 @@ On install you'll pick the agent pane command:
 5. custom
 
 Saved to `~/.config/agentic-dev/config.toml`. Change later with `agentic-dev reconfigure`.
+
+### Agent skill (`handoff`)
+
+Install deploys [`skills/handoff/`](skills/handoff/) to the Agent Skills path [`~/.agents/skills/handoff`](https://agentskills.io/home). Call it by name: **`handoff`**.
+
+Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the agent with the task prompt, and babysit until the user is needed.
+
+Agents that already discover `~/.agents/skills` (including Cursor / `agent`) need no extra link. Codex, OpenCode, and Claude get a symlink into their agent-specific global skills dir:
+
+| Agent choice | Extra link |
+|--------------|------------|
+| `agent` / Cursor | none (`~/.agents/skills` only) |
+| `codex` | `~/.codex/skills/handoff` |
+| `opencode` | `~/.config/opencode/skills/handoff` |
+| `claude` | `~/.claude/skills/handoff` |
+| custom | none |
+
+Manual install:
+
+```bash
+npx skills add simoncrypta/agentic-dev-setup --skill handoff -g
+```
 
 ## Shell commands
 

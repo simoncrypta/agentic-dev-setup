@@ -9,7 +9,7 @@ bootstrap_remote_libs() {
   local tmp lib
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/lib"
-  for lib in common detect deps config shell-rc uninstall help omarchy; do
+  for lib in common detect deps config skills shell-rc uninstall help omarchy; do
     curl -fsSL "${base%/}/lib/${lib}.sh" -o "$tmp/lib/${lib}.sh"
   done
   printf '%s' "$tmp"
@@ -40,6 +40,8 @@ source "$ROOT/lib/detect.sh"
 source "$ROOT/lib/deps.sh"
 # shellcheck source=lib/config.sh
 source "$ROOT/lib/config.sh"
+# shellcheck source=lib/skills.sh
+source "$ROOT/lib/skills.sh"
 # shellcheck source=lib/shell-rc.sh
 source "$ROOT/lib/shell-rc.sh"
 # shellcheck source=lib/uninstall.sh

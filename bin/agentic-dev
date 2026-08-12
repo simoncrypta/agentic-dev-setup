@@ -34,6 +34,8 @@ load_libs() {
   # shellcheck source=/dev/null
   source "$lib/config.sh"
   # shellcheck source=/dev/null
+  source "$lib/skills.sh"
+  # shellcheck source=/dev/null
   source "$lib/shell-rc.sh"
   # shellcheck source=/dev/null
   source "$lib/uninstall.sh"
@@ -87,6 +89,7 @@ cmd_doctor() {
     failures=1
   fi
   doctor_plugin || failures=1
+  doctor_skill || failures=1
   doctor_omarchy_integration || failures=1
   return "$failures"
 }
@@ -101,6 +104,7 @@ cmd_update() {
 cmd_reconfigure() {
   RECONFIGURE=1
   prompt_agent_command
+  deploy_skills
   info "agent command updated — new workspaces will use: $(read_agent_command)"
   info "restart agent panes or run 'dev' in a new workspace to apply"
 }

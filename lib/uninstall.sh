@@ -65,6 +65,10 @@ uninstall_agentic_dev() {
       || info "keeping third-party worktrunk config: $WORKTRUNK_CONFIG_DIR/config.toml"
   fi
 
+  if confirm "Remove managed handoff skill (~/.agents/skills/handoff)?"; then
+    remove_managed_handoff_skill
+  fi
+
   if confirm "Remove fcitx5 keyboard.conf override?"; then
     run rm -f "${FCITX5_CONFIG_DIR}/conf/keyboard.conf"
   fi

@@ -541,7 +541,7 @@ deploy_lib() {
     deploy_tree "$src/lib" "${HOME}/.local/share/agentic-dev/lib"
   else
     local libfile
-    for libfile in common.sh detect.sh deps.sh config.sh shell-rc.sh uninstall.sh help.sh omarchy.sh; do
+    for libfile in common.sh detect.sh deps.sh config.sh skills.sh shell-rc.sh uninstall.sh help.sh omarchy.sh; do
       deploy_install_file "lib/$libfile" "${HOME}/.local/share/agentic-dev/lib/$libfile"
     done
   fi
@@ -600,6 +600,7 @@ deploy_configs() {
   deploy_agentic_dev_config
   deploy_lib
   deploy_plugin
+  deploy_skills
 
   if [[ ! -f "$WORKTRUNK_CONFIG_DIR/config.toml" ]] || [[ "$FORCE" -eq 1 ]]; then
     deploy_install_file "config/worktrunk/config.toml" "$WORKTRUNK_CONFIG_DIR/config.toml"

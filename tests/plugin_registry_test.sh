@@ -253,6 +253,8 @@ source "$ROOT/lib/common.sh"
 source "$ROOT/lib/deps.sh"
 # shellcheck source=lib/config.sh
 source "$ROOT/lib/config.sh"
+# shellcheck source=lib/skills.sh
+source "$ROOT/lib/skills.sh"
 # shellcheck source=lib/detect.sh
 source "$ROOT/lib/detect.sh"
 # shellcheck source=lib/shell-rc.sh

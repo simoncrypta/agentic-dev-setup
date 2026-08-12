@@ -170,6 +170,32 @@ doctor_plugin() {
   [[ "$missing" -eq 0 ]]
 }
 
+doctor_skill() {
+  local missing=0 agent_cmd agent_skills_dir link
+  if [[ -f "${AGENTIC_DEV_SKILL_DIR}/SKILL.md" ]]; then
+    log "  ok  skill $AGENTIC_DEV_SKILL_ID [$AGENTIC_DEV_SKILL_DIR]"
+  else
+    log "  missing  skill $AGENTIC_DEV_SKILL_ID at $AGENTIC_DEV_SKILL_DIR"
+    missing=$((missing + 1))
+  fi
+
+  agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  if agent_skills_dir="$(skill_agent_extra_global_dirs "$agent_cmd" 2>/dev/null)"; then
+    link="${agent_skills_dir}/${AGENTIC_DEV_SKILL_ID}"
+    if [[ -L "$link" ]] && _skill_link_is_ours "$link"; then
+      log "  ok  skill link for agent '$agent_cmd' [$link]"
+    elif [[ -e "$link" ]]; then
+      log "  warning  skill path exists but is not our symlink [$link]"
+    else
+      log "  missing  skill link for agent '$agent_cmd' [$link]"
+      missing=$((missing + 1))
+    fi
+  else
+    log "  ok  agent '$agent_cmd' uses ~/.agents/skills (no extra link)"
+  fi
+  [[ "$missing" -eq 0 ]]
+}
+
 doctor_adopted_plugin() {
   local id="$1" repo="$2" ref="$3"
   if ! plugin_inspect "$id"; then

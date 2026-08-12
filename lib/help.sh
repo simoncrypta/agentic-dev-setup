@@ -64,7 +64,13 @@ Config:
   ~/.config/herdr/plugins/dev-layout/    dev layout plugin
   ~/.config/worktrunk/herdr-layout.sh
   ~/.config/worktrunk/config.toml        worktrunk hooks
+  ~/.agents/skills/handoff/              handoff skill (canonical)
   ~/.config/fcitx5/conf/keyboard.conf    Linux fcitx5 hint trigger override
+
+Agent skill (`handoff`):
+  Installed to ~/.agents/skills/handoff (https://agentskills.io). Extra symlink
+  only for codex/opencode/claude. Source: skills/handoff/.
+  Manual: npx skills add simoncrypta/agentic-dev-setup -s handoff -g
 
 Plugin only (see README — review manifest/scripts before install):
   herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout
@@ -81,6 +87,7 @@ show_summary() {
   log ""
   log "Agent command: $(read_agent_command 2>/dev/null || echo agent)"
   log "Config: ${AGENTIC_DEV_USER_CONFIG}"
+  log "Skill: ${AGENTIC_DEV_SKILL_DIR}"
   log ""
   log "Try: dev"
   log "Help: agentic-dev help"

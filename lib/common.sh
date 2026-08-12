@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.1.1}"
+AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.1.2}"
 AGENTIC_DEV_MARKER_START="# >>> agentic-dev-setup"
 AGENTIC_DEV_MARKER_END="# <<< agentic-dev-setup"
 
@@ -16,6 +16,10 @@ WORKTRUNK_CONFIG_DIR="${HOME}/.config/worktrunk"
 FCITX5_CONFIG_DIR="${HOME}/.config/fcitx5"
 LOCAL_BIN="${HOME}/.local/bin"
 PLUGIN_ID="agentic-dev.dev-layout"
+# Canonical skill install per Agent Skills (https://agentskills.io): ~/.agents/skills.
+AGENTIC_DEV_SKILL_ID="handoff"
+AGENTS_SKILLS_DIR="${HOME}/.agents/skills"
+AGENTIC_DEV_SKILL_DIR="${AGENTS_SKILLS_DIR}/${AGENTIC_DEV_SKILL_ID}"
 
 DRY_RUN=0
 YES=0
