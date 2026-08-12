@@ -89,7 +89,6 @@ _wt_herdr_focus_workspace() {
   return 1
 }
 
-# True when workdir is a linked git worktree (sibling checkout), not the main repo root.
 _wt_is_linked_worktree() {
   local workdir="$1" main_path
   [[ -d "$workdir" ]] || return 1
@@ -112,7 +111,7 @@ _wt_herdr_workspace_id_from_worktree_path() {
     | head -1
 }
 
-# Open or create a Herdr worktree-group child for a linked checkout. Fail loud — no flat fallback.
+# Linked checkouts: worktree open/create only — never flat workspace create.
 _wt_herdr_resolve_linked_workspace() {
   local label="$1"
   local workdir="$2"
@@ -164,7 +163,6 @@ _wt_herdr_focused_workspace_id() {
     | head -1
 }
 
-# Resolve (or create) the workspace id for workdir. Linked checkouts must use worktree APIs.
 _wt_herdr_resolve_workspace() {
   local label="$1"
   local workdir="$2"
@@ -193,7 +191,7 @@ _wt_herdr_resolve_workspace() {
   printf '%s' "$workspace_id"
 }
 
-# Focus → sticky layout create → always restore previous focus (attach re-focuses if needed).
+# Restore previous focus after layout create (plugin invoke has no --workspace).
 _wt_herdr_apply_layout() {
   local workspace_id="$1"
   local prev_ws=""
@@ -252,7 +250,7 @@ wt_herdr_layout_close() {
   workspace_id="$(_wt_herdr_workspace_id_by_label "$label")"
   [[ -n "$workspace_id" ]] || return 0
 
-  # Close the Herdr subspace only (do not git-remove the worktree here — Worktrunk owns that).
+  # Herdr subspace only; Worktrunk owns git worktree removal.
   herdr workspace close "$workspace_id" >/dev/null 2>&1 || true
 }
 

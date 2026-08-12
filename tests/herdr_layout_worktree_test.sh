@@ -105,7 +105,6 @@ grep -qE '^workspace create ' "$HERDR_CALL_LOG" \
   && fail "should not fall back to workspace create when worktree open succeeds"
 grep -q 'plugin action invoke agentic-dev.dev-layout.create' "$HERDR_CALL_LOG" \
   || fail "expected sticky layout create"
-# Always restore parent focus after plugin invoke
 grep -qE '^workspace focus w-parent$' "$HERDR_CALL_LOG" \
   || fail "expected restore focus to parent; log=$(cat "$HERDR_CALL_LOG")"
 printf 'PASS: linked worktree uses herdr worktree open + restores focus\n'

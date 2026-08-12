@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# Handoff skill install: ~/.agents/skills (agentskills.io) + optional agent-specific links.
 
-# All extra global dirs we may have linked into (for scrub on reconfigure/uninstall).
+# Agent-specific skill dirs (scrubbed on reconfigure/uninstall).
 skill_extra_global_dirs_all() {
   printf '%s\n' \
     "${HOME}/.codex/skills" \
@@ -10,8 +9,7 @@ skill_extra_global_dirs_all() {
     "${HOME}/.claude/skills"
 }
 
-# Extra global skill dir for agents that do not discover ~/.agents/skills.
-# Prefer ~/.agents/skills whenever the selected agent already uses it.
+# Extra link only when the agent does not discover ~/.agents/skills.
 skill_agent_extra_global_dirs() {
   local cmd="${1:-}"
   case "$cmd" in
@@ -89,7 +87,6 @@ deploy_skill_tree() {
     return 0
   fi
 
-  # Remote: one MANIFEST file lists relative paths (avoid a hardcoded bash array).
   deploy_install_file "skills/${AGENTIC_DEV_SKILL_ID}/MANIFEST" "${dest_root}/MANIFEST"
   [[ -f "${dest_root}/MANIFEST" ]] || {
     warn "skill MANIFEST missing after fetch"
@@ -111,7 +108,7 @@ deploy_skills() {
   if agent_skills_dir="$(skill_agent_extra_global_dirs "$agent_cmd")"; then
     ensure_skill_symlink "$agent_skills_dir"
   else
-    info "skill available at $AGENTIC_DEV_SKILL_DIR (Agent Skills path; no extra link for '$agent_cmd')"
+    info "skill at $AGENTIC_DEV_SKILL_DIR (no extra link for '$agent_cmd')"
   fi
 }
 

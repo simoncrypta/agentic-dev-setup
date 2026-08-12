@@ -28,7 +28,7 @@ Worktrunk will not run project hooks/aliases until the user approves them. In no
 
 ## Handoffs
 
-Inside Herdr, use the `handoff` skill recipe (`resources/handoff.md`): Herdr worktree group + sticky layout + CLI `herdr agent prompt` (Cursor may need `send-keys enter` after paste) — not tmux/Zellij session spawners. Keep parent focus with `--no-focus` and restore after layout create (`WT_HERDR_NO_ATTACH=1` on Worktrunk post-start).
+Inside Herdr, use the `handoff` skill recipe (`resources/handoff.md`): Worktrunk checkout + `wt_herdr_layout_create` + CLI `herdr agent prompt` (Cursor may need `send-keys enter` after paste). Keep parent focus with `--no-focus` / `WT_HERDR_NO_ATTACH=1`.
 
 For parallel sub-agents in separate worktrees from a parent that cannot consume shell cd scripts:
 
@@ -37,7 +37,7 @@ For parallel sub-agents in separate worktrees from a parent that cannot consume 
 wt switch --create <branch> --no-cd
 ```
 
-Then point the child at that path, or open the path with `herdr worktree open --path …` and start the agent there. Prefer letting hooks run when you want the Herdr subspace auto-created and Graphite tracking. Only add `--no-hooks` when you intentionally skip project hooks — then run `gt track` yourself if the repo is Graphite (see `resources/git-workflow.md`).
+Then open the sibling with `wt_herdr_layout_create` (see `resources/handoff.md`). Prefer letting hooks run when you want the Herdr subspace auto-created and Graphite tracking. Only add `--no-hooks` when you intentionally skip project hooks — then run `gt track` yourself if the repo is Graphite (see `resources/git-workflow.md`).
 
 ## Do not
 

@@ -37,8 +37,9 @@ Prefer creating the worktree via Worktrunk when hooks are approved, so project `
 
 ```bash
 wt switch --create <branch> --no-cd
-# then Herdr-open the sibling path with --no-focus
-herdr worktree open --path "<sibling>" --label "<Label>" --no-focus
+source "$HOME/.config/worktrunk/herdr-layout.sh"
+LABEL="$(_wt_generate_session_name "<sibling>")"
+WT_HERDR_NO_ATTACH=1 wt_herdr_layout_create "$LABEL" "<sibling>"
 ```
 
 If you must use `herdr worktree create` (or hooks are not approved), still run the `gt track` block above. Never pass Worktrunk `--yes` to bypass approvals for the user.
@@ -61,7 +62,3 @@ Handoff never auto-commits. When the user later asks to commit/submit:
 |---------|---------|
 | Graphite | `gt create` / `gt modify` / `gt submit` (or Graphite MCP `run_gt_cmd`) |
 | Otherwise | `git` + `gh` via `git-master` / PR workflows |
-
-## Why this is not always Graphite
-
-Many Herdr users are not on Graphite. Hard-coding `gt` in the global handoff skill would break those repos. Detection + optional track keeps LeftLane (and similar) correct without forcing Graphite everywhere.
