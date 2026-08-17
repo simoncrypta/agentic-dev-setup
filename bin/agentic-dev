@@ -43,6 +43,8 @@ load_libs() {
   source "$lib/help.sh"
   # shellcheck source=/dev/null
   source "$lib/omarchy.sh"
+  # shellcheck source=/dev/null
+  source "$lib/doctor.sh"
 }
 
 cmd_doctor() {
@@ -82,10 +84,9 @@ cmd_doctor() {
     log "  missing  managed plugin $PLUGIN_ID [github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF]"
     failures=1
   fi
-  if [[ -f "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" ]]; then
-    log "  ok  herdr-layout.sh"
+  if doctor_helper; then
+    :
   else
-    log "  missing  herdr-layout.sh"
     failures=1
   fi
   doctor_plugin || failures=1
@@ -105,8 +106,11 @@ cmd_reconfigure() {
   RECONFIGURE=1
   prompt_agent_command
   deploy_skills
+  ensure_selected_agent
+  sync_omarchy_default_agent
   info "agent command updated — new workspaces will use: $(read_agent_command)"
   info "restart agent panes or run 'dev' in a new workspace to apply"
+  info "layout helper is unchanged; run agentic-dev update or ./install.sh from the clone to re-sync it"
 }
 
 usage() {
@@ -116,8 +120,8 @@ Usage: agentic-dev <command>
 Commands:
   help          Show full help
   doctor        Check dependencies and integration
-  update        Re-sync configs
-  reconfigure   Re-prompt agent command
+  update        Re-sync configs, helper, and skill
+  reconfigure   Re-prompt agent command (not a full redeploy)
   dry-run       Show planned install actions
   uninstall     Remove integration
 

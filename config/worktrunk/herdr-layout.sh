@@ -7,12 +7,12 @@ HERDR="${HERDR_BIN_PATH:-herdr}"
 PLUGIN_ID="agentic-dev.dev-layout"
 
 _wt_herdr_server_running() {
-  herdr status server 2>/dev/null | grep -q '^status: running'
+  "$HERDR" status server 2>/dev/null | grep -q '^status: running'
 }
 
 _wt_herdr_ensure_server() {
   _wt_herdr_server_running && return 0
-  herdr status >/dev/null 2>&1 || true
+  "$HERDR" status >/dev/null 2>&1 || true
   _wt_herdr_server_running
 }
 
@@ -29,7 +29,7 @@ _wt_git_main_worktree() {
 
 _wt_herdr_workspace_id_by_label() {
   local label="$1"
-  herdr workspace list 2>/dev/null \
+  "$HERDR" workspace list 2>/dev/null \
     | jq -r --arg label "$label" '.result.workspaces[] | select(.label == $label) | .workspace_id' \
     | head -1
 }
@@ -40,14 +40,14 @@ _wt_herdr_workspace_id_by_cwd() {
   want="$(_wt_realpath "$cwd")"
   while IFS= read -r ws_id; do
     [[ -n "$ws_id" ]] || continue
-    pane_cwd="$(herdr pane list --workspace "$ws_id" 2>/dev/null \
+    pane_cwd="$("$HERDR" pane list --workspace "$ws_id" 2>/dev/null \
       | jq -r '.result.panes[0].cwd // empty' | head -1)"
     [[ -n "$pane_cwd" ]] || continue
     if [[ "$(_wt_realpath "$pane_cwd")" == "$want" ]]; then
       printf '%s' "$ws_id"
       return 0
     fi
-  done < <(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[].workspace_id')
+  done < <("$HERDR" workspace list 2>/dev/null | jq -r '.result.workspaces[].workspace_id')
   return 1
 }
 
@@ -69,7 +69,24 @@ _wt_generate_session_name() {
     branch=$(cd "$worktree_path" && git branch --show-current 2>/dev/null | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
   fi
 
-  echo "${repo_name}_${branch}"
+  echo "${branch}_${repo_name}"
+}
+
+_wt_herdr_focused_workspace_id() {
+  "$HERDR" workspace list 2>/dev/null \
+    | jq -r '.result.workspaces[] | select(.focused == true) | .workspace_id' \
+    | head -1
+}
+
+# Keep whatever workspace the user is viewing. Never focus the child, and never
+# restore to this helper's own pane (HERDR_WORKSPACE_ID) if the user is elsewhere.
+_wt_herdr_keep_user_focus() {
+  local want="$1"
+  local now
+  [[ -n "$want" ]] || return 0
+  now="$(_wt_herdr_focused_workspace_id)"
+  [[ "$now" != "$want" ]] || return 0
+  "$HERDR" workspace focus "$want" >/dev/null 2>&1 || true
 }
 
 _wt_herdr_focus_workspace() {
@@ -83,7 +100,7 @@ _wt_herdr_focus_workspace() {
     workspace_id="$(_wt_herdr_workspace_id_by_cwd "$workdir" 2>/dev/null || true)"
   fi
   if [[ -n "$workspace_id" ]]; then
-    herdr workspace focus "$workspace_id" >/dev/null
+    "$HERDR" workspace focus "$workspace_id" >/dev/null
     return 0
   fi
   return 1
@@ -101,7 +118,7 @@ _wt_herdr_workspace_id_from_worktree_path() {
   local workdir="$1"
   local want
   want="$(_wt_realpath "$workdir")"
-  herdr worktree list --cwd "$workdir" 2>/dev/null \
+  "$HERDR" worktree list --cwd "$workdir" 2>/dev/null \
     | jq -r --arg want "$want" '
         .result.worktrees[]?
         | select((.path // "") != "")
@@ -112,55 +129,64 @@ _wt_herdr_workspace_id_from_worktree_path() {
 }
 
 # Linked checkouts: worktree open/create only — never flat workspace create.
+# `worktree open --path` still uses the focused workspace as the source unless
+# --cwd/--workspace is set; a non-git focused workspace returns not_git_worktree.
+_wt_herdr_json_workspace_id() {
+  printf '%s' "$1" | jq -r '.result.workspace.workspace_id // empty' 2>/dev/null || true
+}
+
+_wt_herdr_json_error() {
+  printf '%s' "$1" | jq -r '.error.message // empty' 2>/dev/null || true
+}
+
 _wt_herdr_resolve_linked_workspace() {
   local label="$1"
   local workdir="$2"
-  local main_root branch workspace_id out
+  local main_root branch workspace_id out err
 
   workspace_id="$(_wt_herdr_workspace_id_from_worktree_path "$workdir")"
-  if [[ -n "$workspace_id" && "$workspace_id" != "null" ]]; then
-    printf '%s' "$workspace_id"
-    return 0
-  fi
-
-  out="$(herdr worktree open --path "$workdir" --label "$label" --no-focus 2>/dev/null)" || out=""
-  workspace_id="$(printf '%s' "$out" | jq -r '.result.workspace.workspace_id // empty' 2>/dev/null || true)"
-  if [[ -n "$workspace_id" && "$workspace_id" != "null" ]]; then
+  if [[ -n "$workspace_id" ]]; then
     printf '%s' "$workspace_id"
     return 0
   fi
 
   main_root="$(_wt_git_main_worktree "$workdir")"
   branch="$(git -C "$workdir" branch --show-current 2>/dev/null || true)"
-  if [[ -z "$main_root" || -z "$branch" ]]; then
-    echo "Cannot resolve main repo / branch for linked worktree: $workdir" >&2
+  if [[ -z "$main_root" ]]; then
+    echo "Cannot resolve main repo for linked worktree: $workdir" >&2
     return 1
   fi
 
-  out="$(herdr worktree create \
+  out="$("$HERDR" worktree open --cwd "$main_root" --path "$workdir" --label "$label" --no-focus)" || true
+  workspace_id="$(_wt_herdr_json_workspace_id "$out")"
+  if [[ -n "$workspace_id" ]]; then
+    printf '%s' "$workspace_id"
+    return 0
+  fi
+  err="$(_wt_herdr_json_error "$out")"
+  [[ -z "$err" ]] || echo "herdr worktree open: $err" >&2
+
+  if [[ -z "$branch" ]]; then
+    echo "Cannot resolve branch for linked worktree: $workdir" >&2
+    return 1
+  fi
+
+  out="$("$HERDR" worktree create \
     --cwd "$main_root" \
     --branch "$branch" \
     --path "$workdir" \
     --label "$label" \
-    --no-focus 2>/dev/null)" || out=""
-  workspace_id="$(printf '%s' "$out" | jq -r '.result.workspace.workspace_id // empty' 2>/dev/null || true)"
-  if [[ -n "$workspace_id" && "$workspace_id" != "null" ]]; then
+    --no-focus)" || true
+  workspace_id="$(_wt_herdr_json_workspace_id "$out")"
+  if [[ -n "$workspace_id" ]]; then
     printf '%s' "$workspace_id"
     return 0
   fi
+  err="$(_wt_herdr_json_error "$out")"
+  [[ -z "$err" ]] || echo "herdr worktree create: $err" >&2
 
   echo "Failed to open/create Herdr worktree subspace for: $workdir" >&2
   return 1
-}
-
-_wt_herdr_focused_workspace_id() {
-  if [[ -n "${HERDR_WORKSPACE_ID:-}" ]]; then
-    printf '%s' "$HERDR_WORKSPACE_ID"
-    return 0
-  fi
-  herdr workspace list 2>/dev/null \
-    | jq -r '.result.workspaces[]? | select(.focused == true) | .workspace_id' \
-    | head -1
 }
 
 _wt_herdr_resolve_workspace() {
@@ -177,45 +203,78 @@ _wt_herdr_resolve_workspace() {
     if _wt_is_linked_worktree "$workdir"; then
       workspace_id="$(_wt_herdr_resolve_linked_workspace "$label" "$workdir")" || return 1
     else
-      workspace_id="$(herdr workspace create --cwd "$workdir" --label "$label" --no-focus 2>/dev/null \
-        | jq -r '.result.workspace.workspace_id')"
+      workspace_id="$("$HERDR" workspace create --cwd "$workdir" --label "$label" --no-focus \
+        | jq -r '.result.workspace.workspace_id // empty')"
     fi
   fi
 
-  [[ -n "$workspace_id" && "$workspace_id" != "null" ]] || {
+  [[ -n "$workspace_id" ]] || {
     echo "Failed to resolve Herdr workspace '$label' for $workdir" >&2
     return 1
   }
 
-  herdr workspace rename "$workspace_id" "$label" >/dev/null 2>&1 || true
+  "$HERDR" workspace rename "$workspace_id" "$label" >/dev/null 2>&1 || true
   printf '%s' "$workspace_id"
 }
 
-# Restore previous focus after layout create (plugin invoke has no --workspace).
-_wt_herdr_apply_layout() {
-  local workspace_id="$1"
-  local prev_ws=""
-
-  prev_ws="$(_wt_herdr_focused_workspace_id 2>/dev/null || true)"
-  herdr workspace focus "$workspace_id" >/dev/null
-  "$HERDR" plugin action invoke "${PLUGIN_ID}.create" >/dev/null
-  if [[ -n "$prev_ws" && "$prev_ws" != "null" && "$prev_ws" != "$workspace_id" ]]; then
-    herdr workspace focus "$prev_ws" >/dev/null 2>&1 || true
+# `herdr plugin action invoke` replaces the plugin env with the focused workspace.
+# Run the plugin script directly so the child id/label/path and prompt survive.
+_wt_herdr_plugin_root() {
+  local registry root
+  if [[ -n "${WT_HERDR_PLUGIN_ROOT:-}" && -f "${WT_HERDR_PLUGIN_ROOT}/dev-layout.sh" ]]; then
+    printf '%s' "$WT_HERDR_PLUGIN_ROOT"
+    return 0
   fi
+  registry="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugins.json"
+  [[ -f "$registry" ]] || return 1
+  root="$(jq -r --arg id "$PLUGIN_ID" \
+    '.[] | select(.plugin_id == $id) | .plugin_root // .source.managed_path // empty' \
+    "$registry" | head -1)"
+  [[ -n "$root" && -f "$root/dev-layout.sh" ]] || return 1
+  printf '%s' "$root"
+}
+
+_wt_herdr_invoke_plugin() {
+  local action="$1"
+  local workspace_id="$2"
+  local label="$3"
+  local workdir="$4"
+  local root
+  root="$(_wt_herdr_plugin_root)" || {
+    echo "Cannot find $PLUGIN_ID plugin root; cannot $action layout for workspace ${workspace_id:-unknown}" >&2
+    return 1
+  }
+  WT_HERDR_LABEL="$label" \
+    WT_HERDR_WORKDIR="$workdir" \
+    WT_HERDR_NO_ATTACH="${WT_HERDR_NO_ATTACH:-}" \
+    WT_HERDR_AGENT_PROMPT="${WT_HERDR_AGENT_PROMPT:-}" \
+    HERDR_WORKSPACE_ID="$workspace_id" \
+    HERDR_PLUGIN_ROOT="$root" \
+    HERDR_BIN_PATH="${HERDR_BIN_PATH:-$HERDR}" \
+    bash "$root/dev-layout.sh" "$action"
 }
 
 wt_herdr_layout_create() {
   local label="$1"
   local workdir="$2"
-  local workspace_id
+  local workspace_id keep_focus rc=0
 
   _wt_herdr_ensure_server || {
     echo "Herdr server is not running. Start it with: herdr" >&2
     return 1
   }
 
-  workspace_id="$(_wt_herdr_resolve_workspace "$label" "$workdir")" || return 1
-  _wt_herdr_apply_layout "$workspace_id"
+  keep_focus="$(_wt_herdr_focused_workspace_id)"
+  workspace_id="$(_wt_herdr_resolve_workspace "$label" "$workdir")" || {
+    _wt_herdr_keep_user_focus "$keep_focus"
+    return 1
+  }
+  if ! WT_HERDR_NO_ATTACH=1 _wt_herdr_invoke_plugin create "$workspace_id" "$label" "$workdir"; then
+    echo "Failed to create $PLUGIN_ID layout for workspace $workspace_id" >&2
+    rc=1
+  fi
+  _wt_herdr_keep_user_focus "$keep_focus"
+  return "$rc"
 }
 
 wt_herdr_layout_apply() {
@@ -227,7 +286,7 @@ wt_herdr_layout_apply() {
 
   if _wt_in_herdr && [[ -n "${HERDR_WORKSPACE_ID:-}" ]]; then
     workspace_id="$HERDR_WORKSPACE_ID"
-    label="$(herdr workspace get "$workspace_id" 2>/dev/null \
+    label="$("$HERDR" workspace get "$workspace_id" 2>/dev/null \
       | jq -r '.result.workspace.label // empty')"
   fi
 
@@ -237,9 +296,11 @@ wt_herdr_layout_apply() {
 
   workspace_id="${workspace_id:-$(_wt_herdr_workspace_id_by_label "$label")}"
   [[ -n "$workspace_id" ]] || workspace_id="$(_wt_herdr_workspace_id_by_cwd "$workdir" 2>/dev/null || true)"
-  [[ -n "$workspace_id" ]] && herdr workspace focus "$workspace_id" >/dev/null
 
-  "$HERDR" plugin action invoke "${PLUGIN_ID}.apply" >/dev/null
+  if ! _wt_herdr_invoke_plugin apply "${workspace_id:-}" "$label" "$workdir"; then
+    echo "Failed to apply $PLUGIN_ID layout for workspace ${workspace_id:-unknown}" >&2
+    return 1
+  fi
 }
 
 wt_herdr_layout_close() {
@@ -251,7 +312,7 @@ wt_herdr_layout_close() {
   [[ -n "$workspace_id" ]] || return 0
 
   # Herdr subspace only; Worktrunk owns git worktree removal.
-  herdr workspace close "$workspace_id" >/dev/null 2>&1 || true
+  "$HERDR" workspace close "$workspace_id" >/dev/null 2>&1 || true
 }
 
 wt_herdr_attach() {
@@ -267,6 +328,6 @@ wt_herdr_attach() {
   fi
 
   if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
-    herdr
+    "$HERDR"
   fi
 }

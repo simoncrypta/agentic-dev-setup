@@ -2,9 +2,64 @@
 # shellcheck shell=bash
 
 HERDR_MIN_VERSION=0.7.5
+GROK_MISE_SPEC="npm:@xai-official/grok"
 
 dep_present() {
   command -v "$1" >/dev/null 2>&1
+}
+
+ensure_mise_shims() {
+  local dir
+  for dir in "${HOME}/.local/bin" "${HOME}/.local/share/mise/shims"; do
+    [[ -d "$dir" ]] || continue
+    case ":${PATH}:" in
+      *":${dir}:"*) ;;
+      *) PATH="${dir}:${PATH}" ;;
+    esac
+  done
+}
+
+# Allowlist only — never probe `mise registry` (network) or eval `mise hook-env`.
+mise_can_install() {
+  local spec="$1"
+  has_mise || return 1
+  [[ -n "$spec" ]] || return 1
+  [[ "$spec" == *:* ]] && return 0
+  case "$spec" in
+    herdr|worktrunk|fzf|jq|neovim|lazygit|pi) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+maybe_mise_install() {
+  local bin="$1" spec="${2:-$1}"
+  if dep_present "$bin"; then
+    info "present: $bin"
+    return 0
+  fi
+  mise_can_install "$spec" || return 1
+  info "installing via mise: $spec"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  if run mise use -g "$spec"; then
+    ensure_mise_shims
+    hash -r 2>/dev/null || true
+    dep_present "$bin" && return 0
+  fi
+  return 1
+}
+
+maybe_omarchy_pkg_install() {
+  local pkg="$1"
+  local bin="${2:-$1}"
+  if dep_present "$bin"; then
+    info "present: $bin"
+    return 0
+  fi
+  is_omarchy && command -v omarchy >/dev/null 2>&1 || return 1
+  info "installing via omarchy pkg add: $pkg"
+  run omarchy pkg add "$pkg"
 }
 
 maybe_brew_install() {
@@ -49,20 +104,24 @@ maybe_apt_install() {
 }
 
 install_dep() {
-  local bin="$1" brew_spec="${2:-$1}" apt_pkg="${3:-$1}" pacman_pkg="${4:-$1}"
+  local bin="$1" pkg="${2:-$1}"
   if dep_present "$bin"; then
     info "present: $bin"
     return 0
   fi
+  maybe_mise_install "$bin" "$pkg" && return 0
+  maybe_omarchy_pkg_install "$pkg" "$bin" && return 0
   if has_brew; then
-    info "installing via brew: $brew_spec"
-    if run brew install "$brew_spec" && dep_present "$bin"; then
+    info "installing via brew: $pkg"
+    if run brew install "$pkg" && dep_present "$bin"; then
       return 0
     fi
   fi
-  maybe_apt_install "$apt_pkg" "$bin" && return 0
-  maybe_pacman_install "$pacman_pkg" "$bin" && return 0
-  warn "missing $bin (install brew, apt, or pacman package manually)"
+  maybe_apt_install "$pkg" "$bin" && return 0
+  if ! is_omarchy; then
+    maybe_pacman_install "$pkg" "$bin" && return 0
+  fi
+  warn "missing $bin (install via mise, omarchy pkg add, brew, apt, or pacman)"
   return 1
 }
 
@@ -219,6 +278,10 @@ install_herdr_binary() {
     require_herdr_min_version
     return $?
   fi
+  if maybe_mise_install herdr herdr; then
+    require_herdr_min_version
+    return $?
+  fi
   if has_brew; then
     info "installing via brew: herdr"
     if run brew install herdr && dep_present herdr; then
@@ -227,7 +290,8 @@ install_herdr_binary() {
     fi
     warn "brew install herdr failed — trying herdr.dev installer"
   fi
-  dep_present curl || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
   info "installing via https://herdr.dev/install.sh"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0
@@ -243,6 +307,9 @@ install_herdr_binary() {
 install_worktrunk_binary() {
   if dep_present wt; then
     info "present: wt"
+    return 0
+  fi
+  if maybe_mise_install wt worktrunk; then
     return 0
   fi
   if has_brew; then
@@ -275,7 +342,8 @@ install_worktrunk_binary() {
   esac
   dest="${LOCAL_BIN}/wt"
   ensure_dir "$LOCAL_BIN"
-  dep_present curl || maybe_apt_install curl curl || true
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || true
   info "downloading worktrunk from GitHub releases"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0
@@ -328,8 +396,10 @@ install_tuicr_binary() {
       return 1
       ;;
   esac
-  dep_present curl || maybe_apt_install curl curl || true
-  dep_present jq || maybe_apt_install jq jq || true
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || true
+  dep_present jq || maybe_mise_install jq jq \
+    || maybe_omarchy_pkg_install jq jq || maybe_apt_install jq jq || true
   url="$(curl -fsSL https://api.github.com/repos/agavra/tuicr/releases/latest \
     | jq -r --arg pat "$pattern" '.assets[] | select(.name | contains($pat)) | .browser_download_url' \
     | head -1)"
@@ -355,20 +425,127 @@ install_tuicr_binary() {
   rm -rf "$tmp"
 }
 
+install_grok_binary() {
+  if dep_present grok; then
+    info "present: grok"
+    return 0
+  fi
+  if maybe_mise_install grok "$GROK_MISE_SPEC"; then
+    return 0
+  fi
+  warn "missing grok (install with: mise use -g $GROK_MISE_SPEC)"
+  return 1
+}
+
+ensure_selected_agent() {
+  local cmd
+  cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  case "$cmd" in
+    grok) install_grok_binary || true ;;
+    pi) maybe_mise_install pi pi || true ;;
+  esac
+  ensure_herdr_agent_integration || true
+}
+
+# Map agentic-dev agent command → `herdr integration install` target.
+# See https://herdr.dev/docs/integrations/
+herdr_integration_for_agent() {
+  local cmd="${1%% *}"
+  case "$cmd" in
+    agent|cursor|cursor-agent) printf 'cursor' ;;
+    grok) printf 'grok' ;;
+    pi) printf 'pi' ;;
+    omp) printf 'omp' ;;
+    claude) printf 'claude' ;;
+    codex) printf 'codex' ;;
+    copilot) printf 'copilot' ;;
+    opencode) printf 'opencode' ;;
+    kilo) printf 'kilo' ;;
+    kimi) printf 'kimi' ;;
+    hermes) printf 'hermes' ;;
+    droid) printf 'droid' ;;
+    devin) printf 'devin' ;;
+    qodercli) printf 'qodercli' ;;
+    mastracode) printf 'mastracode' ;;
+    agy|antigravity|antigravity-cli) printf 'antigravity-cli' ;;
+    *) return 1 ;;
+  esac
+}
+
+# Config dirs that must exist before `herdr integration install` (per Herdr docs).
+herdr_integration_config_dir() {
+  local target="$1"
+  case "$target" in
+    cursor) printf '%s' "${CURSOR_CONFIG_DIR:-$HOME/.cursor}" ;;
+    grok) printf '%s' "${GROK_HOME:-$HOME/.grok}" ;;
+    pi) printf '%s' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" ;;
+    omp)
+      if [[ -n "${PI_CODING_AGENT_DIR:-}" ]]; then
+        printf '%s' "$PI_CODING_AGENT_DIR"
+      elif [[ -n "${PI_CONFIG_DIR:-}" ]]; then
+        printf '%s' "$HOME/$PI_CONFIG_DIR/agent"
+      else
+        printf '%s' "$HOME/.omp/agent"
+      fi
+      ;;
+    claude) printf '%s' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" ;;
+    codex) printf '%s' "${CODEX_HOME:-$HOME/.codex}" ;;
+    copilot) printf '%s' "${COPILOT_HOME:-$HOME/.copilot}" ;;
+    opencode) printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" ;;
+    kilo) printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/kilo" ;;
+    kimi) printf '%s' "${KIMI_CODE_HOME:-$HOME/.kimi-code}" ;;
+    hermes) printf '%s' "$HOME/.hermes" ;;
+    droid) printf '%s' "$HOME/.factory" ;;
+    devin) printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/devin" ;;
+    qodercli) printf '%s' "${QODER_CONFIG_DIR:-$HOME/.qoder}" ;;
+    mastracode) printf '%s' "$HOME/.mastracode" ;;
+    antigravity-cli) printf '%s' "${ANTIGRAVITY_CLI_CONFIG_DIR:-$HOME/.gemini/config}" ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_herdr_agent_integration() {
+  local cmd target conf
+  dep_present herdr || return 0
+  cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  if ! target="$(herdr_integration_for_agent "$cmd")"; then
+    info "no Herdr integration mapped for agent command '$cmd'"
+    return 0
+  fi
+  if conf="$(herdr_integration_config_dir "$target")"; then
+    if declare -F ensure_dir >/dev/null 2>&1; then
+      ensure_dir "$conf"
+    else
+      mkdir -p "$conf"
+    fi
+  fi
+  info "installing Herdr integration: $target (agent=$cmd)"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would run: herdr integration install $target"
+    return 0
+  fi
+  if run herdr integration install "$target"; then
+    return 0
+  fi
+  warn "herdr integration install $target failed — see https://herdr.dev/docs/integrations/"
+  return 1
+}
+
 install_dependencies() {
   info "checking dependencies..."
+  ensure_mise_shims
 
   install_herdr_binary || {
     warn "Herdr >=$HERDR_MIN_VERSION is required"
     return 1
   }
-  install_dep git git git git || true
+  install_dep git || true
   install_worktrunk_binary || true
-  install_dep fzf fzf fzf fzf || true
-  install_dep jq jq jq jq || true
+  install_dep fzf || true
+  install_dep jq || true
   install_tuicr_binary || warn "missing tuicr (review tab needs it)"
-  install_dep nvim neovim neovim neovim || true
-  install_dep lazygit lazygit lazygit lazygit || true
+  install_dep nvim neovim || true
+  install_dep lazygit || true
 }
 
 doctor_dependencies() {
@@ -405,5 +582,38 @@ doctor_dependencies() {
       missing=$((missing + 1))
     fi
   done
+  if declare -F read_agent_command >/dev/null; then
+    local agent_cmd agent_bin target status_out status_line
+    agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+    agent_bin="${agent_cmd%% *}"
+    case "$agent_bin" in
+      agent|"") ;;
+      *)
+        if dep_present "$agent_bin"; then
+          log "  ok  $agent_bin ($(command -v "$agent_bin"))"
+        else
+          log "  missing  $agent_bin (configured agent command)"
+          missing=$((missing + 1))
+        fi
+        ;;
+    esac
+    if target="$(herdr_integration_for_agent "$agent_cmd" 2>/dev/null)"; then
+      if ! dep_present herdr; then
+        :
+      elif ! status_out="$(herdr integration status 2>/dev/null)"; then
+        log "  unverified  herdr integration $target (status unavailable)"
+      else
+        status_line="$(printf '%s\n' "$status_out" | grep -E "^${target}:" | head -1 || true)"
+        if [[ -n "$status_line" && "$status_line" != *": not installed"* ]]; then
+          log "  ok  herdr integration $target"
+        elif [[ -n "$status_line" ]]; then
+          log "  missing  herdr integration $target (run: herdr integration install $target)"
+          missing=$((missing + 1))
+        else
+          log "  unverified  herdr integration $target (not listed by herdr)"
+        fi
+      fi
+    fi
+  fi
   return "$missing"
 }

@@ -111,6 +111,9 @@ case "${1:-} ${2:-}" in
       "- \(.plugin_id) (fixture) enabled [github:\(.source.owner)/\(.source.repo)@\(.source.resolved_commit)]"
     end' "$registry"
     ;;
+  'integration install'|'integration status'|'integration uninstall')
+    exit 0
+    ;;
   'plugin install')
     source_name="${3:?missing plugin source}"
     shift 3
@@ -164,6 +167,8 @@ source "$ROOT/lib/common.sh"
 source "$ROOT/lib/deps.sh"
 # shellcheck source=lib/config.sh
 source "$ROOT/lib/config.sh"
+# shellcheck source=lib/skills.sh
+source "$ROOT/lib/skills.sh"
 
 HERDR_CONFIG_DIR="$XDG_CONFIG_HOME/herdr"
 HERDR_DEV_LAYOUT_LEGACY_DIR="$HERDR_CONFIG_DIR/plugins/dev-layout"
@@ -301,10 +306,67 @@ test_existing_worktrunk_config_preserved_across_install_and_update() {
   printf 'PASS: existing worktrunk config checksum is unchanged across install and update\n'
 }
 
+test_worktrunk_session_label_migrated_on_update() {
+  local deploy_log="$TMP_DIR/deploy-migrate.output"
+  reset_fixture
+  mkdir -p "$WORKTRUNK_CONFIG_DIR"
+  cat >"$WORKTRUNK_CONFIG_DIR/config.toml" <<'EOF'
+# user-customized worktrunk config - must survive install/update
+[post-start]
+herdr = """
+S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+W="{{ worktree_path }}"
+custom = "echo keep-me"
+"""
+
+[post-remove]
+herdr = """
+S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+"""
+EOF
+
+  deploy_configs >"$deploy_log"
+  grep -Fq 'S="{{ branch | capitalize }}_{{ repo | capitalize }}"' "$WORKTRUNK_CONFIG_DIR/config.toml" \
+    || fail "did not migrate session labels to Branch_Repo"
+  grep -Fq 'S="{{ repo | capitalize }}_{{ branch | capitalize }}"' "$WORKTRUNK_CONFIG_DIR/config.toml" \
+    && fail "old Repo_Branch session labels still present"
+  grep -q 'custom = "echo keep-me"' "$WORKTRUNK_CONFIG_DIR/config.toml" \
+    || fail "migrated config lost user customizations"
+  grep -q "migrated worktrunk session labels to Branch_Repo" "$deploy_log" \
+    || fail "did not report session label migration"
+  grep -q "keeping existing worktrunk config: $WORKTRUNK_CONFIG_DIR/config.toml" "$deploy_log" \
+    || fail "update did not report keeping the existing worktrunk config"
+  printf 'PASS: existing worktrunk S= templates migrate Repo_Branch to Branch_Repo\n'
+}
+
+test_worktrunk_post_start_unsets_handoff_prompt() {
+  local deploy_log="$TMP_DIR/deploy-unset-prompt.output"
+  reset_fixture
+  mkdir -p "$WORKTRUNK_CONFIG_DIR"
+  cat >"$WORKTRUNK_CONFIG_DIR/config.toml" <<'EOF'
+[post-start]
+herdr = """
+S="{{ branch | capitalize }}_{{ repo | capitalize }}"
+W="{{ worktree_path }}"
+source "$HOME/.config/worktrunk/herdr-layout.sh"
+wt_herdr_layout_create "$S" "$W"
+"""
+EOF
+
+  deploy_configs >"$deploy_log"
+  grep -q 'unset WT_HERDR_AGENT_PROMPT' "$WORKTRUNK_CONFIG_DIR/config.toml" \
+    || fail "did not migrate unset WT_HERDR_AGENT_PROMPT into post-start"
+  grep -q "migrated worktrunk post-start to unset WT_HERDR_AGENT_PROMPT" "$deploy_log" \
+    || fail "did not report handoff prompt isolation migration"
+  printf 'PASS: existing worktrunk post-start unsets WT_HERDR_AGENT_PROMPT\n'
+}
+
 test_herdr_config_keybindings
 test_missing_installs_selected_sha
 test_exact_sha_is_noop
 test_mismatched_ref_preserved_with_warning
 test_mismatched_source_preserved_with_warning
 test_existing_worktrunk_config_preserved_across_install_and_update
+test_worktrunk_session_label_migrated_on_update
+test_worktrunk_post_start_unsets_handoff_prompt
 printf 'ALL PASS: worktrunk integration fixture matrix\n'

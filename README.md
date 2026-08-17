@@ -48,8 +48,9 @@ One Herdr workspace per worktree. The agent pane stays on the left (~50%); tool 
 ├─────────────────────────┬────────────────────────────────────────┤
 │                         │                                        │
 │   agent                 │   active tool tab                      │
-│   (agent / codex /      │                                        │
-│    opencode / claude)   │   review    → tuicr                    │
+│   (cursor / grok / pi / │                                        │
+│    codex / opencode /   │   review    → tuicr                    │
+│    claude)              │                                        │
 │                         │   explorer  → nvim (neo-tree)          │
 │   sticky left pane      │   terminal  → shell                    │
 │                         │                                        │
@@ -63,11 +64,13 @@ Prefix is `Ctrl-Space` (same as [Omarchy tmux](https://learn.omacom.io/2/the-oma
 
 On install you'll pick the agent pane command:
 
-1. `agent`
-2. `codex`
-3. `opencode`
-4. `claude`
-5. custom
+1. `cursor` (runs `agent`)
+2. `grok`
+3. `pi`
+4. `codex`
+5. `opencode`
+6. `claude`
+7. custom
 
 Saved to `~/.config/agentic-dev/config.toml`. Change later with `agentic-dev reconfigure`.
 
@@ -75,13 +78,15 @@ Saved to `~/.config/agentic-dev/config.toml`. Change later with `agentic-dev rec
 
 Install deploys [`skills/handoff/`](skills/handoff/) to the Agent Skills path [`~/.agents/skills/handoff`](https://agentskills.io/home). Call it by name: **`handoff`**.
 
-Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the agent with the task prompt, and babysit until the user is needed.
+Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the configured agent (`agent` for Cursor, `grok`, …), and remember where it is.
 
-Agents that already discover `~/.agents/skills` (including Cursor / `agent`) need no extra link. Codex, OpenCode, and Claude get a symlink into their agent-specific global skills dir:
+Agents that already discover `~/.agents/skills` (including Cursor and Grok) need no extra link. Codex, OpenCode, and Claude get a symlink into their agent-specific global skills dir:
 
 | Agent choice | Extra link |
 |--------------|------------|
-| `agent` / Cursor | none (`~/.agents/skills` only) |
+| `cursor` (`agent`) | none (`~/.agents/skills` only) |
+| `grok` | none (`~/.agents/skills` only) |
+| `pi` | `~/.pi/agent/skills/handoff` |
 | `codex` | `~/.codex/skills/handoff` |
 | `opencode` | `~/.config/opencode/skills/handoff` |
 | `claude` | `~/.claude/skills/handoff` |
@@ -187,17 +192,30 @@ Tab switching works even when the agent pane is missing — the agent is recreat
 ```bash
 agentic-dev help         # full reference
 agentic-dev doctor       # check deps + integration
-agentic-dev update       # re-sync configs
-agentic-dev reconfigure  # change agent command
+agentic-dev update       # re-sync configs, helper, and skill
+agentic-dev reconfigure  # change agent command (not a full redeploy)
 agentic-dev dry-run      # preview changes
 agentic-dev uninstall    # remove integration
 ```
 
 ## Omarchy / Linux notes
 
+### Omarchy Quattro
+
+Hyprland user config is Lua (`~/.config/hypr/bindings.lua`), not `bindings.conf`. The installer:
+
+- Detects Omarchy via the `omarchy` CLI / `$OMARCHY_PATH` / `~/.local/share/omarchy`
+- Installs tools with **mise** first (`mise use -g`), matching `omarchy default agent`
+- Installs Arch packages with `omarchy pkg add` (not raw `pacman`)
+- Restarts fcitx5 with `omarchy restart xcompose`
+- Patches `bindings.lua` using Omarchy's helper: `{ omarchy = "terminal-herdr" }`
+- Treats native `SUPER+CTRL+RETURN` → Herdr as first-class (no extra binding required)
+- Optionally remaps `SUPER+ALT+RETURN` from Tmux to Herdr
+- Syncs `~/.config/omarchy/defaults/agent` when you pick `grok` / `pi` / `claude` / `codex` / `opencode`
+
 ### Ubuntu / Debian
 
-Dependencies install via **apt** when available:
+Dependencies install via **mise** when available, then **apt**:
 
 ```bash
 sudo apt-get install -y git fzf jq neovim lazygit curl
@@ -205,13 +223,15 @@ sudo apt-get install -y git fzf jq neovim lazygit curl
 
 Tools not in apt are fetched automatically:
 
-- **herdr** — [herdr.dev/install.sh](https://herdr.dev/install.sh)
-- **worktrunk** (`wt`) — GitHub release binary to `~/.local/bin`
+- **herdr** — mise, then [herdr.dev/install.sh](https://herdr.dev/install.sh)
+- **worktrunk** (`wt`) — mise, then GitHub release binary to `~/.local/bin`
 - **tuicr** — GitHub release binary to `~/.local/bin`
+- **grok** — `mise use -g npm:@xai-official/grok` when selected
+- **pi** — `mise use -g pi` when selected
 
-Homebrew (Linuxbrew) is used when present and takes priority over apt.
+Homebrew (Linuxbrew) is used when present if mise cannot install the tool.
 
-On Ubuntu with **Hyprland**, the installer can optionally add `SUPER+ALT+RETURN` → `herdr` in `~/.config/hypr/bindings.conf`. If you use **fcitx5** (common on CJK setups), the `Ctrl+Alt+H/J` hint hotkey fix applies the same way as on Omarchy.
+On Ubuntu with **Hyprland**, the installer can optionally add `SUPER+ALT+RETURN` → `herdr` in `~/.config/hypr/bindings.lua` (or leftover `bindings.conf`). If you use **fcitx5** (common on CJK setups), the `Ctrl+Alt+H/J` hint hotkey fix applies the same way as on Omarchy.
 
 ### fcitx5 `Ctrl+Alt+H` conflict
 
@@ -221,16 +241,19 @@ See [Omarchy discussion #1578](https://github.com/basecamp/omarchy/discussions/1
 
 ### Hyprland launcher
 
-On Omarchy or any system with `~/.config/hypr/bindings.conf`, the installer can patch a key binding to launch `herdr` on `SUPER+ALT+RETURN` (replacing tmux if present). You'll be prompted during install.
+On Omarchy or any Hyprland system, the installer can patch `SUPER+ALT+RETURN` to launch Herdr (replacing Tmux if present). You'll be prompted during install.
 
-Omarchy uses `uwsm-app` and `omarchy-cmd-terminal-cwd`; other Hyprland setups get a generic `xdg-terminal-exec herdr` binding.
+Omarchy Quattro uses `{ omarchy = "terminal-herdr" }` in `bindings.lua`. Other Hyprland setups get a generic `xdg-terminal-exec herdr` binding.
 
 ## Dependencies
 
-Installed only if missing (Homebrew, apt, pacman, or upstream installers):
+Installed only if missing (mise first, then Omarchy `pkg add`, Homebrew, apt, pacman, or upstream installers):
 
-- [herdr](https://herdr.dev) (brew, or `curl -fsSL https://herdr.dev/install.sh | sh`)
+- [herdr](https://herdr.dev) (`mise use -g herdr`, brew, or `curl -fsSL https://herdr.dev/install.sh | sh`)
+- Official [Herdr agent integration](https://herdr.dev/docs/integrations/) for the selected agent (`herdr integration install cursor|grok|pi|…`)
 - git, worktrunk (`wt`), fzf, jq, tuicr, neovim, lazygit
+- [grok](https://github.com/xai-org) (`mise use -g npm:@xai-official/grok`) when selected as the agent
+- pi (`mise use -g pi`) when selected as the agent
 
 ## Files installed
 
@@ -240,7 +263,7 @@ Installed only if missing (Homebrew, apt, pacman, or upstream installers):
 ~/.config/herdr/config.toml
 ~/.config/herdr/plugins/dev-layout/
 ~/.config/worktrunk/herdr-layout.sh
-~/.config/worktrunk/config.toml   (only if not already present)
+~/.config/worktrunk/config.toml   (created if missing; update rewrites Repo_Branch session labels to Branch_Repo)
 ~/.config/fcitx5/conf/keyboard.conf   (Linux, when fcitx5/Omarchy)
 ~/.local/bin/agentic-dev
 ~/.local/share/agentic-dev/lib/  (for CLI)

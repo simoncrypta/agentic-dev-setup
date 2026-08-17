@@ -123,6 +123,9 @@ case "${1:-} ${2:-}" in
       "- \(.plugin_id) (fixture) enabled [github:\(.source.owner)/\(.source.repo)@\(.source.resolved_commit)]"
     end' "$registry"
     ;;
+  'integration install'|'integration status'|'integration uninstall')
+    exit 0
+    ;;
   'plugin install')
     source_name="${3:?missing plugin source}"
     shift 3
@@ -185,6 +188,8 @@ source "$ROOT/lib/common.sh"
 source "$ROOT/lib/deps.sh"
 # shellcheck source=/dev/null
 source "$ROOT/lib/config.sh"
+# shellcheck source=/dev/null
+source "$ROOT/lib/skills.sh"
 # shellcheck source=/dev/null
 source "$ROOT/lib/detect.sh"
 

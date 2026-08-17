@@ -31,16 +31,9 @@ gt track --parent "$TRUNK" --no-interactive \
   || gt track --force --no-interactive
 ```
 
-Do this **before** prompting the child agent so `gtp` / `gt submit` / stack nav work.
+Do this **before** starting the child so `gtp` / `gt submit` / stack nav work.
 
-Prefer creating the worktree via Worktrunk when hooks are approved, so project `graphite-track` runs:
-
-```bash
-wt switch --create <branch> --no-cd
-source "$HOME/.config/worktrunk/herdr-layout.sh"
-LABEL="$(_wt_generate_session_name "<sibling>")"
-WT_HERDR_NO_ATTACH=1 wt_herdr_layout_create "$LABEL" "<sibling>"
-```
+Prefer creating the worktree via Worktrunk when hooks are approved, so project `graphite-track` runs, then the handoff create block in `resources/handoff.md` (`WT_HERDR_AGENT_PROMPT` + `wt_herdr_layout_create`).
 
 If you must use `herdr worktree create` (or hooks are not approved), still run the `gt track` block above. Never pass Worktrunk `--yes` to bypass approvals for the user.
 

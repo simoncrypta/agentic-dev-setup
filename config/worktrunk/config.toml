@@ -3,11 +3,13 @@ copy-ignored = "wt step copy-ignored"
 
 [post-start]
 herdr = """
-S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+S="{{ branch | capitalize }}_{{ repo | capitalize }}"
 W="{{ worktree_path }}"
 
 source "$HOME/.config/worktrunk/herdr-layout.sh"
-WT_HERDR_NO_ATTACH=1 wt_herdr_layout_create "$S" "$W"
+# Layout only — never inherit a handoff prompt from the parent agent shell.
+unset WT_HERDR_AGENT_PROMPT
+wt_herdr_layout_create "$S" "$W"
 
 echo "✓ Herdr worktree group / subspace '$S' ready"
 echo "  Layout: agent pane (left, sticky) | tabs: review, explorer, terminal"
@@ -18,7 +20,7 @@ echo "  Attach with: herdr"
 
 [post-remove]
 herdr = """
-S="{{ repo | capitalize }}_{{ branch | capitalize }}"
+S="{{ branch | capitalize }}_{{ repo | capitalize }}"
 source "$HOME/.config/worktrunk/herdr-layout.sh"
 wt_herdr_layout_close "$S"
 """

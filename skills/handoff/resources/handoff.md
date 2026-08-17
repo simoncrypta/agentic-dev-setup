@@ -14,8 +14,8 @@ Use this when spawning a feature worktree from the main checkout inside Herdr.
 <main-repo-parent>/<repo>.<branch>
 ```
 
-Example: `/home/you/Work/myapp` + `fix-auth` → `/home/you/Work/myapp.fix-auth`.  
-Label (matches helpers): `Repo_Branch`, e.g. `Myapp_Fix-auth` via `_wt_generate_session_name`.
+Example: `/home/you/Work/myapp` + `fix-auth` → `/home/you/Work/myapp.fix-auth`.
+Label (matches helpers): `Branch_Repo`, e.g. `Fix-auth_Myapp` via `_wt_generate_session_name`.
 
 ## Create checkout + sticky subspace
 
@@ -31,81 +31,54 @@ wt switch --create "$BRANCH" --no-cd
 
 source "$HOME/.config/worktrunk/herdr-layout.sh"
 LABEL="$(_wt_generate_session_name "$PATH_SIBLING")"
-WT_HERDR_NO_ATTACH=1 wt_herdr_layout_create "$LABEL" "$PATH_SIBLING"
+WT_HERDR_AGENT_PROMPT="$(printf '%s\n\n%s' "$INTRO" "$USER_PROMPT")"
+wt_herdr_layout_create "$LABEL" "$PATH_SIBLING" || {
+  echo "handoff: wt_herdr_layout_create failed; stop. Do not start the child another way." >&2
+  return 1
+}
 ```
 
 `wt_herdr_layout_create` owns:
 
 - `herdr worktree open|create --path` for linked checkouts (group under main)
-- sticky `agentic-dev.dev-layout.create`
-- restoring the previously focused workspace (parent stays in view)
+- sticky `agentic-dev.dev-layout.create` via the plugin script (not `plugin action invoke`)
+- forwarding `WT_HERDR_AGENT_PROMPT` so plugin create can `herdr agent prompt` after the TUI is detected
+- keeping whatever workspace the user is already viewing (create does not focus the child, the parent, or the helper's own pane)
+
+Worktrunk `post-start` also calls `wt_herdr_layout_create`, but it **unsets**
+`WT_HERDR_AGENT_PROMPT` first so a parent agent shell cannot leak the task into
+layout-only create. Only this handoff recipe should submit the prompt.
 
 Human/shell: `wtc <branch>` (same hooks + helper).
 
-Do **not** duplicate that topology with a hand-rolled `worktree create` + focus + plugin + restore sequence.
-
-Find the child workspace id (label or path):
-
-```bash
-CHILD_WS="$(herdr workspace list | jq -r --arg l "$LABEL" \
-  '.result.workspaces[] | select(.label == $l) | .workspace_id' | head -1)"
-```
+Do **not** duplicate that topology with a hand-rolled `worktree create` + plugin sequence.
 
 ### Graphite / project git
 
 `herdr worktree create` alone does not Graphite-track. Prefer `wt switch --create` when hooks are approved. Otherwise track explicitly — `resources/git-workflow.md`.
 
-## Bind agent + prompt
+## Prompt wrap and plan
 
-Poll until the sticky agent pane exists (layout create can be briefly async):
+Intro is one line. Keep the **original user prompt** unchanged after it.
 
-```bash
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  herdr pane list --workspace "$CHILD_WS" | jq -e '
-    .result.panes[] | select(.agent != null and .agent != "")
-  ' >/dev/null 2>&1 && break
-  sleep 1
-done
-AGENT_PANE="$(herdr pane list --workspace "$CHILD_WS" | jq -r '
-  .result.panes[] | select(.agent != null and .agent != "") | .pane_id' | head -1)"
+```text
+You are in linked worktree <path> (branch <branch>). Stay in this checkout.
 ```
 
-Kind from `~/.config/agentic-dev/config.toml`: `agent`→`cursor`, `codex`, `opencode`, `claude`.
+Graphite repos only, add: `Use gt, not raw git commit/push, unless asked.` — `resources/git-workflow.md`.
 
-Prefer rename when the layout agent is already running:
+If the user asked to plan/design/explore, add that to the intro (for example
+`Plan/design only; do not implement yet.`). Plugin create already starts the
+agent TUI, so CLI plan flags cannot be added afterward.
 
-```bash
-NAME="fix-auth"   # [a-z][a-z0-9_-]{0,31}
-herdr agent rename "$AGENT_PANE" "$NAME"
-# Else shell-only pane:
-# herdr agent start "$NAME" --kind cursor --pane "$AGENT_PANE"
-```
-
-Prompt from the parent — no `herdr agent focus`:
-
-```bash
-herdr agent prompt "$NAME" "Implement fix-auth: <task>. Stay in this worktree." --wait --timeout 120000
-```
-
-### Cursor prompt stall
-
-If inject shows pasted text but stays `idle` (`agent_prompt_stalled`):
-
-```bash
-herdr agent send-keys "$NAME" enter
-```
-
-Then babysit (`resources/babysit.md`).
-
-## Kind mapping
-
-| config `command` | `--kind` |
-|------------------|----------|
-| `agent` | `cursor` |
-| `codex` | `codex` |
-| `opencode` | `opencode` |
-| `claude` | `claude` |
+Set `INTRO` to the one-liner above and `USER_PROMPT` to the original user text
+only. Do not attach transcripts, debugger dumps, or tool JSON. Pass both via
+`WT_HERDR_AGENT_PROMPT` on `wt_herdr_layout_create` (see above). If the helper
+exits nonzero, report that failure and stop; do not invent a second start.
+Do **not** `herdr pane run` after create, do not `workspace focus` / `agent focus`
+/ `session attach`, and do not paste or `pane send-keys` into the child TUI.
+Do not send a second `herdr agent prompt` after the helper returns.
 
 ## After handoff
 
-Stay on the parent. Track via `herdr agent list` / `herdr worktree list --cwd "$MAIN"`.
+Stay on whatever workspace the user is viewing. Remember `{label, path, branch, one-line task}` — `resources/babysit.md`.

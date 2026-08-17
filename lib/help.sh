@@ -16,8 +16,8 @@ install.sh options:
 Post-install CLI (agentic-dev):
   help          This help
   doctor        Check dependencies and integration
-  update        Re-sync configs from latest release
-  reconfigure   Re-prompt agent command
+  update        Re-sync configs, helper, and skill from the install source
+  reconfigure   Re-prompt agent command (does not re-sync the helper)
   dry-run       Show planned actions without changes
   uninstall     Remove marker block and managed files
 
@@ -52,10 +52,16 @@ the next tab switch or prefix+1.
 
 Omarchy / Linux:
   Clears fcitx5 Ctrl+Alt+H/J spell-hint hotkeys when fcitx5 is present
-  Optionally patches Hyprland SUPER+ALT+RETURN to launch herdr (Omarchy or generic)
+  Optionally patches Hyprland SUPER+ALT+RETURN to launch herdr
+  Quattro: ~/.config/hypr/bindings.lua with { omarchy = "terminal-herdr" }
+  Native Omarchy Herdr is SUPER+CTRL+RETURN; packages via omarchy pkg add
+
+Install order:
+  mise first (herdr, worktrunk, fzf, jq, nvim, lazygit, grok)
+  then omarchy pkg add on Omarchy, then brew / apt / pacman / upstream
 
 Ubuntu / Debian:
-  Uses apt for git, fzf, jq, neovim, lazygit, curl when available
+  Uses apt for git, fzf, jq, neovim, lazygit, curl when mise is unavailable
   Downloads herdr, worktrunk, and tuicr from upstream releases when needed
 
 Config:
@@ -69,7 +75,8 @@ Config:
 
 Agent skill (`handoff`):
   Installed to ~/.agents/skills/handoff (https://agentskills.io). Extra symlink
-  only for codex/opencode/claude. Source: skills/handoff/.
+  only for pi/codex/opencode/claude. cursor (`agent`) and grok use ~/.agents/skills.
+  Source: skills/handoff/.
   Manual: npx skills add simoncrypta/agentic-dev-setup -s handoff -g
 
 Plugin only (see README — review manifest/scripts before install):

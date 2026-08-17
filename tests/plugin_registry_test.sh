@@ -167,6 +167,9 @@ case "${1:-} ${2:-}" in
       "- \(.plugin_id) (fixture) enabled [github:\(.source.owner)/\(.source.repo)@\(.source.resolved_commit)]"
     end' "$registry"
     ;;
+  'integration install'|'integration status'|'integration uninstall')
+    exit 0
+    ;;
   'plugin install')
     source_name="${3:?missing plugin source}"
     shift 3
@@ -179,12 +182,12 @@ case "${1:-} ${2:-}" in
       esac
     done
     if [[ "${FAKE_HERDR_SIGNAL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.1}" ]]; then
+      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.3}" ]]; then
       kill -TERM "$PPID"
       exit 143
     fi
     if [[ "${FAKE_HERDR_FAIL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.1}" ]]; then
+      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.3}" ]]; then
       exit 42
     fi
     [[ "${FAKE_HERDR_FAIL_ALL_INSTALL:-0}" != 1 ]] || exit 42
@@ -261,6 +264,8 @@ source "$ROOT/lib/detect.sh"
 source "$ROOT/lib/shell-rc.sh"
 # shellcheck source=lib/uninstall.sh
 source "$ROOT/lib/uninstall.sh"
+# shellcheck source=lib/doctor.sh
+source "$ROOT/lib/doctor.sh"
 
 HERDR_CONFIG_DIR="$XDG_CONFIG_HOME/herdr"
 HERDR_DEV_LAYOUT_LEGACY_DIR="$HERDR_CONFIG_DIR/plugins/dev-layout"
@@ -307,7 +312,7 @@ run_failing_first_proofs() {
   if ! declare -F ensure_managed_github_plugin >/dev/null; then
     printf 'FAILING-FIRST: transactional migration helper is absent\n' >&2
     failures=$((failures + 1))
-  elif ensure_managed_github_plugin agentic-dev.dev-layout simoncrypta/herdr-dev-layout v0.2.1 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
+  elif ensure_managed_github_plugin agentic-dev.dev-layout simoncrypta/herdr-dev-layout v0.2.3 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     printf 'FAILING-FIRST: injected migration failure returned success\n' >&2
     failures=$((failures + 1))
   fi

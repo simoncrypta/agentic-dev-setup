@@ -54,7 +54,7 @@ read_layout_editor() {
 RECONFIGURE=0
 
 export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
-export DEV_LAYOUT_PLUGIN_REF="v0.2.1"
+export DEV_LAYOUT_PLUGIN_REF="v0.2.3"
 PICKR_PLUGIN_REPO="tomasvarga/herdr-pickr"
 PICKR_PLUGIN_REF="e393ef593e44d2497f43d20aa7b0e4a26ea3d445"
 WORKTRUNK_PLUGIN_REPO="devashish2203/herdr-worktrunk"
@@ -458,21 +458,25 @@ prompt_agent_command() {
 
   log ""
   log "Which command should the agent pane auto-start?"
-  log "  1) agent"
-  log "  2) codex"
-  log "  3) opencode"
-  log "  4) claude"
-  log "  5) custom"
+  log "  1) cursor"
+  log "  2) grok"
+  log "  3) pi"
+  log "  4) codex"
+  log "  5) opencode"
+  log "  6) claude"
+  log "  7) custom"
   log ""
-  printf 'Choice [1-5]: '
+  printf 'Choice [1-7]: '
   local choice custom_cmd cmd="agent"
   read_tty choice
   case "$choice" in
-    1|agent) cmd="agent" ;;
-    2|codex) cmd="codex" ;;
-    3|opencode) cmd="opencode" ;;
-    4|claude) cmd="claude" ;;
-    5|custom)
+    1|cursor|agent) cmd="agent" ;;
+    2|grok) cmd="grok" ;;
+    3|pi) cmd="pi" ;;
+    4|codex) cmd="codex" ;;
+    5|opencode) cmd="opencode" ;;
+    6|claude) cmd="claude" ;;
+    7|custom)
       printf 'Enter custom command: '
       read_tty custom_cmd
       cmd="${custom_cmd:-agent}"
@@ -538,13 +542,34 @@ deploy_lib() {
   local src
   src="$(install_src_dir)"
   if [[ -d "$src" ]]; then
-    deploy_tree "$src/lib" "${HOME}/.local/share/agentic-dev/lib"
+    deploy_tree "$src/lib" "${AGENTIC_DEV_SHARE_DIR}/lib"
   else
     local libfile
-    for libfile in common.sh detect.sh deps.sh config.sh skills.sh shell-rc.sh uninstall.sh help.sh omarchy.sh; do
-      deploy_install_file "lib/$libfile" "${HOME}/.local/share/agentic-dev/lib/$libfile"
+    for libfile in common.sh detect.sh deps.sh config.sh skills.sh shell-rc.sh uninstall.sh help.sh omarchy.sh doctor.sh; do
+      deploy_install_file "lib/$libfile" "${AGENTIC_DEV_SHARE_DIR}/lib/$libfile"
     done
   fi
+}
+
+_recorded_install_source() {
+  local src
+  [[ -f "$AGENTIC_DEV_SOURCE_PATH_FILE" ]] || return 1
+  src="$(<"$AGENTIC_DEV_SOURCE_PATH_FILE")"
+  [[ -n "$src" && -d "$src" && -f "$src/install.sh" && -d "$src/config" ]] || return 1
+  printf '%s' "$src"
+}
+
+record_install_source() {
+  local src
+  src="$(install_src_dir)"
+  [[ -d "$src" && -f "$src/install.sh" && -d "$src/config" ]] || return 0
+  ensure_dir "$AGENTIC_DEV_SHARE_DIR"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would record install source $src"
+    return 0
+  fi
+  printf '%s\n' "$src" >"$AGENTIC_DEV_SOURCE_PATH_FILE"
+  info "recorded install source: $src"
 }
 
 deploy_plugin() {
@@ -562,6 +587,53 @@ deploy_plugin() {
   fi
 }
 
+# Helpers and the shipped template use Branch_Repo. Existing configs from before
+# that rename still expand Repo_Branch, so wtd/dev miss workspaces created by
+# the other side. Rewrite only that exact default S= line.
+WORKTRUNK_SESSION_LABEL_OLD='S="{{ repo | capitalize }}_{{ branch | capitalize }}"'
+WORKTRUNK_SESSION_LABEL_NEW='S="{{ branch | capitalize }}_{{ repo | capitalize }}"'
+
+migrate_worktrunk_session_labels() {
+  local dest="$WORKTRUNK_CONFIG_DIR/config.toml"
+  local tmp line
+  [[ -f "$dest" ]] || return 0
+  grep -Fq "$WORKTRUNK_SESSION_LABEL_OLD" "$dest" || return 0
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would migrate worktrunk session labels in $dest"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    printf '%s\n' "${line//"$WORKTRUNK_SESSION_LABEL_OLD"/"$WORKTRUNK_SESSION_LABEL_NEW"}"
+  done <"$dest" >"$tmp"
+  mv "$tmp" "$dest"
+  info "migrated worktrunk session labels to Branch_Repo in $dest"
+}
+
+# Worktrunk post-start must not inherit WT_HERDR_AGENT_PROMPT from a parent agent
+# shell — that double-submits with the handoff skill's create.
+migrate_worktrunk_clear_handoff_prompt() {
+  local dest="$WORKTRUNK_CONFIG_DIR/config.toml"
+  local tmp
+  [[ -f "$dest" ]] || return 0
+  grep -q 'wt_herdr_layout_create' "$dest" || return 0
+  grep -q 'unset WT_HERDR_AGENT_PROMPT' "$dest" && return 0
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would isolate handoff prompt in $dest post-start"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  awk '
+    /wt_herdr_layout_create/ && !seen_unset {
+      print "unset WT_HERDR_AGENT_PROMPT"
+      seen_unset = 1
+    }
+    { print }
+  ' "$dest" >"$tmp"
+  mv "$tmp" "$dest"
+  info "migrated worktrunk post-start to unset WT_HERDR_AGENT_PROMPT in $dest"
+}
+
 deploy_finalize_permissions() {
   run chmod +x "$LOCAL_BIN/agentic-dev" \
     "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh" \
@@ -569,7 +641,7 @@ deploy_finalize_permissions() {
     "$AGENTIC_DEV_SHELL_DIR/agentic-dev.zsh" \
     "$AGENTIC_DEV_SHELL_DIR/agentic-dev.inc.sh" \
     "$AGENTIC_DEV_CONFIG_DIR/config-reader.sh" 2>/dev/null || true
-  find "${HOME}/.local/share/agentic-dev/lib" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  find "${AGENTIC_DEV_SHARE_DIR}/lib" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 }
 
 deploy_configs() {
@@ -589,7 +661,7 @@ deploy_configs() {
   ensure_dir "$AGENTIC_DEV_SHELL_DIR"
   ensure_dir "$HERDR_CONFIG_DIR"
   ensure_dir "$WORKTRUNK_CONFIG_DIR"
-  ensure_dir "${HOME}/.local/share/agentic-dev"
+  ensure_dir "$AGENTIC_DEV_SHARE_DIR"
 
   for entry in "${files[@]}"; do
     rel="${entry%%|*}"
@@ -606,7 +678,14 @@ deploy_configs() {
     deploy_install_file "config/worktrunk/config.toml" "$WORKTRUNK_CONFIG_DIR/config.toml"
   else
     info "keeping existing worktrunk config: $WORKTRUNK_CONFIG_DIR/config.toml"
+    migrate_worktrunk_session_labels
+    migrate_worktrunk_clear_handoff_prompt
   fi
 
   deploy_finalize_permissions
+  record_install_source
+  ensure_selected_agent
+  if declare -F sync_omarchy_default_agent >/dev/null 2>&1; then
+    sync_omarchy_default_agent
+  fi
 }

@@ -11,11 +11,29 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 FAKE_BIN="$TMP_DIR/bin"
 HERDR_CALL_LOG="$TMP_DIR/herdr-calls.log"
 mkdir -p "$FAKE_BIN" "$TMP_DIR/main" "$TMP_DIR/main.feature"
+unset HERDR_ENV HERDR_PANE_ID
+export HERDR_BIN_PATH="$FAKE_BIN/herdr"
 export PATH="$FAKE_BIN:$PATH"
 export HOME="$TMP_DIR/home"
 mkdir -p "$HOME"
+export XDG_CONFIG_HOME="$TMP_DIR/xdg-config"
+mkdir -p "$XDG_CONFIG_HOME"
+export XDG_STATE_HOME="$TMP_DIR/xdg-state"
+mkdir -p "$XDG_STATE_HOME"
 export HERDR_CALL_LOG
 export HERDR_WORKSPACE_ID="w-parent"
+
+PLUGIN_ROOT="$TMP_DIR/plugin"
+mkdir -p "$PLUGIN_ROOT"
+cat >"$PLUGIN_ROOT/dev-layout.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'plugin %s workspace=%s label=%s no_attach=%s prompt=%s\n' \
+  "${1:-}" "${HERDR_WORKSPACE_ID:-}" "${WT_HERDR_LABEL:-}" \
+  "${WT_HERDR_NO_ATTACH:-}" "${WT_HERDR_AGENT_PROMPT:+set}" >>"${HERDR_CALL_LOG}"
+EOF
+chmod +x "$PLUGIN_ROOT/dev-layout.sh"
+export WT_HERDR_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 cat >"$FAKE_BIN/git" <<EOF
 #!/usr/bin/env bash
@@ -61,14 +79,32 @@ case "\$*" in
     printf 'status: running\\n'
     ;;
   workspace\\ list*)
-    printf '{"result":{"workspaces":[{"workspace_id":"w-parent","label":"parent","focused":true}]}}\\n'
+    if [[ "\$mode" == "steal-focus" ]]; then
+      fid=w-user
+      [[ -f "$TMP_DIR/focused-id" ]] && fid="\$(cat "$TMP_DIR/focused-id")"
+      if [[ "\$fid" == "w-child" ]]; then
+        printf '{"result":{"workspaces":[{"workspace_id":"w-user","label":"user","focused":false},{"workspace_id":"w-child","label":"child","focused":true}]}}\\n'
+      else
+        printf '{"result":{"workspaces":[{"workspace_id":"w-user","label":"user","focused":true}]}}\\n'
+      fi
+    else
+      printf '{"result":{"workspaces":[{"workspace_id":"w-parent","label":"parent","focused":true}]}}\\n'
+    fi
     ;;
   worktree\\ list*)
     printf '{"result":{"worktrees":[]}}\\n'
     ;;
   worktree\\ open*)
     if [[ "\$mode" == "open-fail" || "\$mode" == "all-fail" ]]; then
+      printf '{"error":{"code":"not_git_worktree","message":"Herdr worktree actions require a workspace inside a Git work tree"}}\\n'
       exit 1
+    fi
+    if [[ "\$mode" == "open-requires-cwd" && "\$*" != *"--cwd "* ]]; then
+      printf '{"error":{"code":"not_git_worktree","message":"Herdr worktree actions require a workspace inside a Git work tree"}}\\n'
+      exit 1
+    fi
+    if [[ "\$mode" == "steal-focus" ]]; then
+      printf 'w-child\\n' >"$TMP_DIR/focused-id"
     fi
     printf '{"result":{"workspace":{"workspace_id":"w-child"}}}\\n'
     ;;
@@ -81,8 +117,14 @@ case "\$*" in
   workspace\\ create*)
     printf '{"result":{"workspace":{"workspace_id":"w-flat"}}}\\n'
     ;;
-  workspace\\ focus*|workspace\\ rename*|plugin\\ action*)
+  workspace\\ focus*)
+    if [[ "\$mode" == "steal-focus" ]]; then
+      printf '%s\\n' "\$3" >"$TMP_DIR/focused-id"
+    fi
     printf '{}\\n'
+    ;;
+  workspace\\ rename*|pane\\ list*)
+    printf '{"result":{"panes":[]}}\\n'
     ;;
   *)
     printf '{}\\n'
@@ -94,20 +136,66 @@ EOF
 
 # shellcheck source=config/worktrunk/herdr-layout.sh
 source "$ROOT/config/worktrunk/herdr-layout.sh"
+[[ "$HERDR" == "$FAKE_BIN/herdr" ]] || fail "HERDR bound to live binary: $HERDR"
+
+got="$(_wt_generate_session_name "$TMP_DIR/main.feature")"
+[[ "$got" == "Feature_Main" ]] || fail "session name: expected Feature_Main got $got"
+printf 'PASS: linked path main.feature labels Feature_Main\n'
 
 write_fake_herdr open-ok
 : >"$HERDR_CALL_LOG"
 wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
-
-grep -qE '^worktree open --path .*main\.feature' "$HERDR_CALL_LOG" \
-  || fail "expected herdr worktree open for linked worktree; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^worktree open --cwd .*main --path .*main\.feature' "$HERDR_CALL_LOG" \
+  || fail "expected herdr worktree open --cwd main --path linked; log=$(cat "$HERDR_CALL_LOG")"
 grep -qE '^workspace create ' "$HERDR_CALL_LOG" \
   && fail "should not fall back to workspace create when worktree open succeeds"
-grep -q 'plugin action invoke agentic-dev.dev-layout.create' "$HERDR_CALL_LOG" \
-  || fail "expected sticky layout create"
+grep -qE '^plugin create workspace=w-child label=Main_Feature no_attach=1 prompt=$' "$HERDR_CALL_LOG" \
+  || fail "expected direct plugin create for child workspace; log=$(cat "$HERDR_CALL_LOG")"
+grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
+  && fail "create must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^workspace focus ' "$HERDR_CALL_LOG" \
+  && fail "create must not steal workspace focus; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^agent prompt ' "$HERDR_CALL_LOG" \
+  && fail "helper must not agent prompt; plugin create owns that; log=$(cat "$HERDR_CALL_LOG")"
+printf 'PASS: linked worktree uses herdr worktree open without stealing focus\n'
+
+write_fake_herdr steal-focus
+printf 'w-user\n' >"$TMP_DIR/focused-id"
+: >"$HERDR_CALL_LOG"
+wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
+grep -qE '^workspace focus w-user$' "$HERDR_CALL_LOG" \
+  || fail "create must restore the user's workspace if focus moved; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^workspace focus w-child$' "$HERDR_CALL_LOG" \
+  && fail "create must not focus the child; log=$(cat "$HERDR_CALL_LOG")"
 grep -qE '^workspace focus w-parent$' "$HERDR_CALL_LOG" \
-  || fail "expected restore focus to parent; log=$(cat "$HERDR_CALL_LOG")"
-printf 'PASS: linked worktree uses herdr worktree open + restores focus\n'
+  && fail "create must not restore the helper pane; log=$(cat "$HERDR_CALL_LOG")"
+[[ "$(cat "$TMP_DIR/focused-id")" == "w-user" ]] \
+  || fail "user focus should remain w-user; got $(cat "$TMP_DIR/focused-id")"
+printf 'PASS: create restores the user workspace, not the helper pane\n'
+
+write_fake_herdr open-requires-cwd
+: >"$HERDR_CALL_LOG"
+wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
+grep -qE '^worktree open --cwd .*main --path .*main\.feature' "$HERDR_CALL_LOG" \
+  || fail "open from a non-git focused workspace must pass --cwd; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^plugin create workspace=w-child ' "$HERDR_CALL_LOG" \
+  || fail "expected layout create after --cwd open; log=$(cat "$HERDR_CALL_LOG")"
+grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
+  && fail "create must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
+printf 'PASS: linked open passes --cwd so it does not depend on focused workspace\n'
+
+write_fake_herdr open-ok
+: >"$HERDR_CALL_LOG"
+WT_HERDR_AGENT_PROMPT=$'intro\n\nfix auth'
+wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
+grep -qE '^plugin create workspace=w-child label=Main_Feature no_attach=1 prompt=set$' "$HERDR_CALL_LOG" \
+  || fail "prompt must be forwarded to plugin create; log=$(cat "$HERDR_CALL_LOG")"
+grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
+  && fail "prompted create must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
+grep -qE '^agent prompt ' "$HERDR_CALL_LOG" \
+  && fail "helper must not agent prompt; plugin create owns that; log=$(cat "$HERDR_CALL_LOG")"
+unset WT_HERDR_AGENT_PROMPT
+printf 'PASS: create forwards WT_HERDR_AGENT_PROMPT to the plugin\n'
 
 write_fake_herdr open-ok
 : >"$HERDR_CALL_LOG"
@@ -126,3 +214,30 @@ fi
 grep -qE '^workspace create ' "$HERDR_CALL_LOG" \
   && fail "linked failure must not fall through to flat workspace create; log=$(cat "$HERDR_CALL_LOG")"
 printf 'PASS: linked worktree fails without flat fallback\n'
+
+unset WT_HERDR_PLUGIN_ROOT
+mkdir -p "$XDG_CONFIG_HOME/herdr"
+printf '%s\n' "[{\"plugin_id\":\"agentic-dev.dev-layout\",\"plugin_root\":\"$PLUGIN_ROOT\"}]" \
+  >"$XDG_CONFIG_HOME/herdr/plugins.json"
+got="$(_wt_herdr_plugin_root)"
+[[ "$got" == "$PLUGIN_ROOT" ]] || fail "plugin root from plugins.json: expected $PLUGIN_ROOT got $got"
+printf 'PASS: plugin root resolves from herdr plugins.json\n'
+
+printf '%s\n' "[{\"plugin_id\":\"agentic-dev.dev-layout\",\"source\":{\"managed_path\":\"$PLUGIN_ROOT\"}}]" \
+  >"$XDG_CONFIG_HOME/herdr/plugins.json"
+got="$(_wt_herdr_plugin_root)"
+[[ "$got" == "$PLUGIN_ROOT" ]] || fail "plugin root from managed_path: expected $PLUGIN_ROOT got $got"
+printf 'PASS: plugin root resolves from source.managed_path\n'
+
+rm -f "$XDG_CONFIG_HOME/herdr/plugins.json"
+write_fake_herdr open-ok
+: >"$HERDR_CALL_LOG"
+if wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null 2>&1; then
+  fail "create should fail loud when plugin root is missing"
+fi
+grep -qE '^plugin create ' "$HERDR_CALL_LOG" \
+  && fail "missing plugin root must not run create; log=$(cat "$HERDR_CALL_LOG")"
+grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
+  && fail "missing plugin root must not fall back to invoke; log=$(cat "$HERDR_CALL_LOG")"
+export WT_HERDR_PLUGIN_ROOT="$PLUGIN_ROOT"
+printf 'PASS: missing plugin root fails without invoke fallback\n'

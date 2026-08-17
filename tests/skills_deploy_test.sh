@@ -2,6 +2,9 @@
 # shellcheck shell=bash
 set -euo pipefail
 
+unset BASH_ENV
+export __MISE_BASH_ENV_LOADED=1
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -88,7 +91,31 @@ test_custom_agent_canonical_only() {
   printf 'PASS: custom agent installs canonical skill only\n'
 }
 
+test_grok_uses_canonical_skills_only() {
+  rm -rf "$HOME/.agents" "$HOME/.grok" "$HOME/.codex" "$HOME/.claude"
+  write_agent_config grok
+  deploy_skills >/dev/null
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for grok"
+  [[ ! -e "$HOME/.grok/skills/handoff" ]] || fail "grok should use ~/.agents/skills only"
+  [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "grok should not create a codex link"
+  printf 'PASS: deploy_skills installs ~/.agents/handoff for grok\n'
+}
+
+test_pi_gets_extra_skill_link() {
+  rm -rf "$HOME/.agents" "$HOME/.pi" "$HOME/.codex"
+  write_agent_config pi
+  deploy_skills >/dev/null
+  [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for pi"
+  [[ -L "$HOME/.pi/agent/skills/handoff" ]] || fail "pi skill symlink missing"
+  write_agent_config agent
+  deploy_skills >/dev/null
+  [[ ! -e "$HOME/.pi/agent/skills/handoff" ]] || fail "pi orphan link should be scrubbed on reconfigure"
+  printf 'PASS: deploy_skills links ~/.pi/agent/skills/handoff for pi\n'
+}
+
 test_deploy_agents_path_for_cursor
 test_reconfigure_scrubs_orphan_extra_link
 test_preserve_foreign_skill_path
 test_custom_agent_canonical_only
+test_grok_uses_canonical_skills_only
+test_pi_gets_extra_skill_link

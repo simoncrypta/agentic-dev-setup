@@ -1,4 +1,5 @@
 [agent]
+# cursor (command: agent) | grok | pi | codex | opencode | claude | <custom>
 command = "agent"
 
 [layout]

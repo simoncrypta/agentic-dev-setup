@@ -2,7 +2,12 @@
 # shellcheck shell=bash
 set -euo pipefail
 
+unset BASH_ENV
+export __MISE_BASH_ENV_LOADED=1
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/detect.sh disable=SC1091
+source "$ROOT/lib/detect.sh"
 # shellcheck source=lib/deps.sh disable=SC1091
 source "$ROOT/lib/deps.sh"
 
@@ -44,6 +49,7 @@ log() { printf '%s\n' "$*"; }
 info() { :; }
 warn() { printf '%s\n' "$*" >&2; }
 has_brew() { return 1; }
+has_mise() { return 1; }
 run() { "$@"; }
 export DRY_RUN=0
 
@@ -203,7 +209,7 @@ EOF
 }
 
 test_missing_herdr_uses_upstream_installer() {
-  local case_dir="$tmp/missing" rc
+  local case_dir="$tmp/missing" rc cmd src
   mkdir -p "$case_dir/bin" "$case_dir/home/.local/bin"
   : >"$case_dir/curl.log"
   : >"$case_dir/herdr.log"
@@ -220,8 +226,13 @@ chmod +x "$HOME/.local/bin/herdr"
 INSTALLER
 EOF
   chmod +x "$case_dir/bin/curl"
+  # Keep host herdr/mise off PATH so this case actually hits the curl installer.
+  for cmd in sh bash cat chmod mkdir mktemp sleep kill rm; do
+    src="$(command -v "$cmd")" || continue
+    [[ -e "$case_dir/bin/$cmd" ]] || ln -s "$src" "$case_dir/bin/$cmd"
+  done
 
-  if HOME="$case_dir/home" PATH="$case_dir/home/.local/bin:$case_dir/bin:/usr/bin:/bin" \
+  if HOME="$case_dir/home" PATH="$case_dir/home/.local/bin:$case_dir/bin" \
     CURL_CALL_LOG="$case_dir/curl.log" HERDR_CALL_LOG="$case_dir/herdr.log" \
     install_herdr_binary; then
     rc=0

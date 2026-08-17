@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.1.2}"
+AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.2.0}"
 AGENTIC_DEV_MARKER_START="# >>> agentic-dev-setup"
 AGENTIC_DEV_MARKER_END="# <<< agentic-dev-setup"
 
@@ -20,6 +20,8 @@ PLUGIN_ID="agentic-dev.dev-layout"
 AGENTIC_DEV_SKILL_ID="handoff"
 AGENTS_SKILLS_DIR="${HOME}/.agents/skills"
 AGENTIC_DEV_SKILL_DIR="${AGENTS_SKILLS_DIR}/${AGENTIC_DEV_SKILL_ID}"
+AGENTIC_DEV_SHARE_DIR="${HOME}/.local/share/agentic-dev"
+AGENTIC_DEV_SOURCE_PATH_FILE="${AGENTIC_DEV_SHARE_DIR}/source-path"
 
 DRY_RUN=0
 YES=0
