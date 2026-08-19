@@ -404,22 +404,24 @@ curl -fsSL https://setup.simoncrypta.dev/install.sh | bash
 
 ## Cloudflare hosting
 
-Install CDN on Cloudflare Pages (`agentic-dev-setup.pages.dev`) with custom domain `setup.simoncrypta.dev`.
+`setup.simoncrypta.dev` is a Worker ([`workers/setup-domain/`](workers/setup-domain/)) with `custom_domain = true`. It redirects `/` to GitHub and proxies other paths to GitHub raw `master` (60s cache), so a push to `master` updates `curl | bash` without a Cloudflare rebuild.
+
+Cloudflare Pages (`agentic-dev-setup.pages.dev`) is a Direct Upload snapshot of `public/` — it is **not** connected to Git. GitHub Actions (`.github/workflows/ci.yml`) runs tests on every push/PR, and on `master` also runs `npm run deploy` when `CLOUDFLARE_API_TOKEN` is set.
 
 | URL | Behavior |
 |-----|----------|
 | `https://setup.simoncrypta.dev/` | 301 → GitHub repo (Worker) |
-| `https://setup.simoncrypta.dev/install.sh` | Installer script (Worker → Pages) |
+| `https://setup.simoncrypta.dev/install.sh` | Installer (Worker → GitHub raw `master`) |
 | `https://agentic-dev-setup.pages.dev/` | 301 → GitHub repo (`public/_redirects`) |
 
-The custom domain uses a tiny Worker ([`workers/setup-domain/`](workers/setup-domain/)) with `custom_domain = true`, which creates the Cloudflare DNS record automatically. It redirects `/` to GitHub and proxies everything else to the Pages deployment.
-
-Deploy:
+Manual deploy:
 
 ```bash
 npm install
 npm run deploy   # Pages assets + setup.simoncrypta.dev Worker
 ```
+
+Create a token with **Edit Cloudflare Workers** at [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) and store it as the repo secret `CLOUDFLARE_API_TOKEN`. Account id defaults to this project's Cloudflare account; override with repo variable `CLOUDFLARE_ACCOUNT_ID` if needed.
 
 DNS troubleshooting: if a hostname was queried before the record existed, flush local cache (`resolvectl flush-caches`) and retry. `ping setup.simoncrypta.dev` should resolve to a Cloudflare anycast IP (e.g. `172.64.80.1`).
 

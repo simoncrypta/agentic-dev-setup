@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          failed=0
+          for t in tests/*.sh; do
+            echo "=== $t ==="
+            bash "$t" || failed=1
+          done
+          exit "$failed"
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy Pages and Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "${CLOUDFLARE_API_TOKEN}" ]]; then
+            echo '::notice::CLOUDFLARE_API_TOKEN is not set; skipping Cloudflare deploy.'
+            echo 'setup.simoncrypta.dev already tracks master via the Worker GitHub proxy.'
+            exit 0
+          fi
+          export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-0911918246a46bfced4610f39e6b7eb5}"
+          npm run deploy
