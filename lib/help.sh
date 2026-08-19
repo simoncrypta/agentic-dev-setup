@@ -75,7 +75,7 @@ Config:
 
 Agent skill (`handoff`):
   Installed to ~/.agents/skills/handoff (https://agentskills.io). Extra symlink
-  only for pi/codex/opencode/claude. cursor (`agent`) and grok use ~/.agents/skills.
+  only for grok/pi/codex/opencode/claude. cursor (`agent`) uses ~/.agents/skills.
   Source: skills/handoff/.
   Manual: npx skills add simoncrypta/agentic-dev-setup -s handoff -g
 

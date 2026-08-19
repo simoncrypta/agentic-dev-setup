@@ -80,12 +80,12 @@ Install deploys [`skills/handoff/`](skills/handoff/) to the Agent Skills path [`
 
 Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the configured agent (`agent` for Cursor, `grok`, …), and remember where it is.
 
-Agents that already discover `~/.agents/skills` (including Cursor and Grok) need no extra link. Codex, OpenCode, and Claude get a symlink into their agent-specific global skills dir:
+Agents that already discover `~/.agents/skills` (Cursor) need no extra link. Grok, Codex, OpenCode, Claude, and pi get a symlink into their agent-specific global skills dir:
 
 | Agent choice | Extra link |
 |--------------|------------|
 | `cursor` (`agent`) | none (`~/.agents/skills` only) |
-| `grok` | none (`~/.agents/skills` only) |
+| `grok` | `~/.grok/skills/handoff` |
 | `pi` | `~/.pi/agent/skills/handoff` |
 | `codex` | `~/.codex/skills/handoff` |
 | `opencode` | `~/.config/opencode/skills/handoff` |

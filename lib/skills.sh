@@ -7,14 +7,17 @@ skill_extra_global_dirs_all() {
     "${HOME}/.codex/skills" \
     "${HOME}/.config/opencode/skills" \
     "${HOME}/.claude/skills" \
-    "${HOME}/.pi/agent/skills"
+    "${HOME}/.pi/agent/skills" \
+    "${HOME}/.grok/skills"
 }
 
 # Extra link only when the agent does not discover ~/.agents/skills.
+# Grok scans ~/.grok/skills (and ~/.claude/skills), not ~/.agents/skills.
 skill_agent_extra_global_dirs() {
   local cmd="${1:-}"
   case "$cmd" in
-    agent|cursor|cursor-agent|grok) return 1 ;;
+    agent|cursor|cursor-agent) return 1 ;;
+    grok) printf '%s' "${HOME}/.grok/skills" ;;
     pi) printf '%s' "${HOME}/.pi/agent/skills" ;;
     codex) printf '%s' "${HOME}/.codex/skills" ;;
     opencode) printf '%s' "${HOME}/.config/opencode/skills" ;;
