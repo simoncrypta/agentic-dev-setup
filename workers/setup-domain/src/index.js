@@ -1,6 +1,17 @@
-const GITHUB_RAW =
-  "https://raw.githubusercontent.com/simoncrypta/agentic-dev-setup/master";
 const GITHUB_REPO = "https://github.com/simoncrypta/agentic-dev-setup";
+const GITHUB_SHA_API =
+  "https://api.github.com/repos/simoncrypta/agentic-dev-setup/commits/master";
+const UA = "agentic-dev-setup-cdn";
+
+async function masterSha() {
+  const response = await fetch(GITHUB_SHA_API, {
+    headers: { "User-Agent": UA, Accept: "application/vnd.github.sha" },
+    cf: { cacheTtl: 60 },
+  });
+  if (!response.ok) return "master";
+  const sha = (await response.text()).trim();
+  return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : "master";
+}
 
 export default {
   async fetch(request) {
@@ -9,9 +20,12 @@ export default {
       return Response.redirect(GITHUB_REPO, 301);
     }
 
-    const upstream = new URL(`${GITHUB_RAW}${url.pathname}${url.search}`);
+    const sha = await masterSha();
+    const upstream = new URL(
+      `https://raw.githubusercontent.com/simoncrypta/agentic-dev-setup/${sha}${url.pathname}${url.search}`,
+    );
     const response = await fetch(upstream, {
-      headers: { "User-Agent": "agentic-dev-setup-cdn" },
+      headers: { "User-Agent": UA },
       cf: { cacheTtl: 60, cacheEverything: true },
     });
 
@@ -19,7 +33,6 @@ export default {
       return new Response("Not found\n", { status: 404 });
     }
 
-    // Preserve body; set a stable content-type for shell assets.
     const headers = new Headers(response.headers);
     if (url.pathname.endsWith(".sh") || url.pathname.endsWith(".toml")) {
       headers.set("Content-Type", "text/plain; charset=utf-8");
