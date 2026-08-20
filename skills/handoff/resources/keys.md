@@ -9,9 +9,9 @@ Prefix is **Ctrl-Space**.
 | `prefix+d` | Apply sticky-agent layout |
 | `prefix+1` | Focus agent pane |
 | `prefix+2` / `3` / `4` | review / explorer / terminal |
-| `Alt+1` / `2` / `3` | Same tabs in a dev workspace |
+| `Alt+1` / `2` / `3` (Option on macOS) | Same tabs in a dev workspace |
 | `prefix+shift+g` / `c` / `r` | Worktree open / open-current / remove (plugin) |
 | `prefix+shift+k` | Close workspace |
-| `Ctrl+Alt+H/J/K/L` | Focus pane left / down / up / right |
+| `Ctrl+Alt+H/J/K/L` (Ctrl+Option on macOS) | Focus pane left / down / up / right |
 
 Shell: `wtc` / `wts` / `wtd` / `dev` / `d` / `t`.

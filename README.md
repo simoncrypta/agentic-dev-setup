@@ -55,7 +55,7 @@ One Herdr workspace per worktree. The agent pane stays on the left (~50%); tool 
 │   sticky left pane      │                 fresh                  │
 │                         │   terminal  → shell                    │
 │                         │                                        │
-│   prefix+1              │   prefix+2/3/4  or  Alt+1/2/3          │
+│   prefix+1              │   prefix+2/3/4  or  Alt/Option+1/2/3   │
 └─────────────────────────┴────────────────────────────────────────┘
 ```
 
@@ -128,7 +128,7 @@ npx skills add simoncrypta/agentic-dev-setup --skill handoff -g
 
 ## Herdr keys
 
-Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys#tmux). Bindings live in [`config/herdr/config.toml`](config/herdr/config.toml).
+Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys#tmux). Bindings live in [`config/herdr/config.toml`](config/herdr/config.toml) (Linux / Alt) and [`config/herdr/config.macos.toml`](config/herdr/config.macos.toml) (macOS / Option).
 
 ### Roles
 
@@ -149,7 +149,7 @@ Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/th
 | `prefix+2` | Review tab (configured `tuicr` or `hunk`) |
 | `prefix+3` | Explorer tab (configured `nvim` / `nano` / `tode` / `fresh`) |
 | `prefix+4` | Terminal tab |
-| `Alt+1` / `Alt+2` / `Alt+3` | Same tabs in a **dev** workspace; otherwise focus tab 1/2/3 |
+| `Alt+1` / `Alt+2` / `Alt+3` (Option on macOS) | Same tabs in a **dev** workspace; otherwise focus tab 1/2/3 |
 
 Prefix `1–4` no-op outside a valid dev-layout workspace (they never create a layout). Only `prefix+d` / `create` / `apply` create one.
 
@@ -160,14 +160,14 @@ Prefix `1–4` no-op outside a valid dev-layout workspace (they never create a l
 | `prefix+c` | New tab |
 | `prefix+k` | Close tab |
 | `prefix+shift+t` | Rename tab |
-| `prefix+n` / `Alt+Right` | Next tab |
-| `prefix+p` / `Alt+Left` | Previous tab |
+| `prefix+n` / `Alt+Right` (Option on macOS) | Next tab |
+| `prefix+p` / `Alt+Left` (Option on macOS) | Previous tab |
 
 ### Workspaces (≈ Omarchy sessions)
 
 | Key | Action |
 |-----|--------|
-| `Alt+Up` / `Alt+Down` | Previous / next workspace |
+| `Alt+Up` / `Alt+Down` (Option on macOS) | Previous / next workspace |
 | `prefix+w` | Workspace picker |
 | `prefix+shift+n` | New workspace |
 | `prefix+shift+w` | Rename workspace |
@@ -182,7 +182,7 @@ Prefix `1–4` no-op outside a valid dev-layout workspace (they never create a l
 | `prefix+v` | Split beside |
 | `prefix+x` | Close pane |
 | `prefix+z` | Zoom pane |
-| `Ctrl+Alt+H/J/K/L` | Focus left / down / up / right |
+| `Ctrl+Alt+H/J/K/L` (Ctrl+Option on macOS) | Focus left / down / up / right |
 
 Pane focus uses vim keys instead of Omarchy’s `Ctrl+Alt+Arrows` so it stays clear of desktop/arrow chords; on Omarchy/Linux the installer also clears fcitx5’s `Ctrl+Alt+H/J` hint hotkeys.
 
@@ -374,7 +374,7 @@ type = "plugin_action"
 command = "agentic-dev.dev-layout.select_terminal"
 ```
 
-Or copy the full example from [`config/herdr/config.toml`](config/herdr/config.toml) in this repo (prefix `Ctrl-Space`, pane focus on `Ctrl+Alt+HJKL`, etc.).
+Or copy the full example from [`config/herdr/config.toml`](config/herdr/config.toml) (Linux / Alt) or [`config/herdr/config.macos.toml`](config/herdr/config.macos.toml) (macOS / Option).
 
 Reload after editing:
 

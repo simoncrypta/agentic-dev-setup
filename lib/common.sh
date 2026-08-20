@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.2.4}"
+AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.2.5}"
 AGENTIC_DEV_MARKER_START="# >>> agentic-dev-setup"
 AGENTIC_DEV_MARKER_END="# <<< agentic-dev-setup"
 

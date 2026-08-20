@@ -214,7 +214,44 @@ PY
 test_herdr_config_keybindings() {
   assert_worktrunk_keybindings "$ROOT/config/herdr/config.toml" \
     || fail "repo Herdr config keybinding assertion failed"
+  assert_worktrunk_keybindings "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos Herdr config keybinding assertion failed"
   printf 'PASS: repo Herdr config binds prefix+shift+g/c/r to worktrunk.open/open-current/remove exactly once\n'
+}
+
+test_herdr_linux_uses_alt_macos_uses_option() {
+  grep -q 'key = "alt+1"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing alt+1"
+  grep -q 'focus_pane_left = "ctrl+alt+h"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing ctrl+alt+h"
+  grep -q 'key = "option+1"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing option+1"
+  grep -q 'focus_pane_left = "ctrl+option+h"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing ctrl+option+h"
+  if grep -qE 'key = "alt\+' "$ROOT/config/herdr/config.macos.toml"; then
+    fail "macos herdr config still binds alt+ keys"
+  fi
+  assert_eq "config/herdr/config.toml" "$(detect_os() { printf 'linux'; }; herdr_template_for_platform)" \
+    "linux template path"
+  assert_eq "config/herdr/config.macos.toml" "$(detect_os() { printf 'macos'; }; herdr_template_for_platform)" \
+    "macos template path"
+  printf 'PASS: linux herdr config uses alt; macos uses option\n'
+}
+
+test_deploy_macos_writes_option_herdr_config() {
+  reset_fixture
+  detect_os() { printf 'macos'; }
+  deploy_configs >/dev/null
+  grep -q 'key = "option+1"' "$HERDR_CONFIG_DIR/config.toml" \
+    || fail "macos deploy did not write option+1"
+  grep -q 'focus_pane_left = "ctrl+option+h"' "$HERDR_CONFIG_DIR/config.toml" \
+    || fail "macos deploy did not write ctrl+option+h"
+  assert_worktrunk_keybindings "$HERDR_CONFIG_DIR/config.toml" \
+    || fail "macos deploy lost worktrunk keybindings"
+  unset -f detect_os
+  # shellcheck source=lib/detect.sh
+  source "$ROOT/lib/detect.sh"
+  printf 'PASS: macos deploy writes option herdr bindings\n'
 }
 
 test_missing_installs_selected_sha() {
@@ -362,6 +399,8 @@ EOF
 }
 
 test_herdr_config_keybindings
+test_herdr_linux_uses_alt_macos_uses_option
+test_deploy_macos_writes_option_herdr_config
 test_missing_installs_selected_sha
 test_exact_sha_is_noop
 test_mismatched_ref_preserved_with_warning

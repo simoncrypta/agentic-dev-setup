@@ -37,10 +37,10 @@ Herdr keys (prefix = Ctrl-Space):
   prefix+D           Apply dev layout in current workspace
   prefix+1           Focus agent pane (recreates if crashed)
   prefix+2/3/4       review / explorer / terminal
-  Alt+1/2/3          Same tabs in a dev workspace; else tab 1/2/3
-  Ctrl+Alt+HJKL      Focus panes left/down/up/right
-  Alt+Left/Right     Previous/next tab
-  Alt+Up/Down        Previous/next workspace
+  Alt+1/2/3          Same tabs in a dev workspace; else tab 1/2/3 (Option on macOS)
+  Ctrl+Alt+HJKL      Focus panes left/down/up/right (Ctrl+Option on macOS)
+  Alt+Left/Right     Previous/next tab (Option on macOS)
+  Alt+Up/Down        Previous/next workspace (Option on macOS)
   prefix+w           Workspace picker
   prefix+shift+k     Close workspace
   prefix+shift+g/c/r Worktree open / open-current / remove
@@ -67,7 +67,7 @@ Ubuntu / Debian:
 
 Config:
   ~/.config/agentic-dev/config.toml      agent, review, and explorer commands
-  ~/.config/herdr/config.toml            keybindings + plugin actions
+  ~/.config/herdr/config.toml            keybindings + plugin actions (Option on macOS)
   ~/.config/herdr/plugins/dev-layout/    dev layout plugin
   ~/.config/worktrunk/herdr-layout.sh
   ~/.config/worktrunk/config.toml        worktrunk hooks

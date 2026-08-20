@@ -436,6 +436,13 @@ pickr_template_for_platform() {
   esac
 }
 
+herdr_template_for_platform() {
+  case "$(detect_os)" in
+    macos) printf '%s' "config/herdr/config.macos.toml" ;;
+    *) printf '%s' "config/herdr/config.toml" ;;
+  esac
+}
+
 deploy_pickr_config() {
   local config_dir dest template_rel
   if ! config_dir="$(herdr plugin config-dir pickr 2>/dev/null)" || [[ "$config_dir" != /* ]]; then
@@ -715,11 +722,13 @@ deploy_finalize_permissions() {
 }
 
 deploy_configs() {
+  local herdr_rel
+  herdr_rel="$(herdr_template_for_platform)"
   local -a files=(
     "config/shell/agentic-dev.inc.sh|${AGENTIC_DEV_SHELL_DIR}/agentic-dev.inc.sh"
     "config/bash/agentic-dev.sh|${AGENTIC_DEV_SHELL_DIR}/agentic-dev.sh"
     "config/zsh/agentic-dev.zsh|${AGENTIC_DEV_SHELL_DIR}/agentic-dev.zsh"
-    "config/herdr/config.toml|${HERDR_CONFIG_DIR}/config.toml"
+    "${herdr_rel}|${HERDR_CONFIG_DIR}/config.toml"
     "config/worktrunk/herdr-layout.sh|${WORKTRUNK_CONFIG_DIR}/herdr-layout.sh"
     "bin/agentic-dev|${LOCAL_BIN}/agentic-dev"
   )
