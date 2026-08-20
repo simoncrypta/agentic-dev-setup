@@ -42,6 +42,10 @@ DRY_RUN=0
 info() { :; }
 warn() { printf '%s\n' "$*" >&2; }
 
+if grep -Eq '^[[:space:]]*default_shell[[:space:]]*=' "$ROOT/config/herdr/config.toml"; then
+  fail "shipped herdr config must not set default_shell (macOS /bin/bash nags to switch to zsh)"
+fi
+
 assert_contains "$(default_user_config)" 'review = "tuicr"' \
   "default config includes review"
 assert_contains "$(default_user_config)" 'editor = "nvim"' \
