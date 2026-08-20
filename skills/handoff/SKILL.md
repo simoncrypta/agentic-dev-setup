@@ -2,7 +2,7 @@
 name: handoff
 description: >-
   Spawns main-repo to worktree feature handoffs in Herdr: names a short branch, opens a sibling
-  worktree subspace, applies the sticky-agent layout, starts the configured agent (`agent` for Cursor, `grok`, `pi`, …), and
+  worktree subspace, applies the sticky-agent layout, starts the configured agent (`cursor-agent` for Cursor, `grok`, `pi`, …), and
   remembers where it is. Also covers Herdr pane control and Worktrunk (wt) for that stack. Use
   when the user asks to hand off, spawn parallel features or worktrees, or manage Herdr/Worktrunk
   in this layout. Call by name: handoff.

@@ -4,7 +4,7 @@
 default_user_config() {
   cat <<'EOF'
 [agent]
-command = "agent"
+command = "cursor-agent"
 
 [layout]
 review = "tuicr"
@@ -39,7 +39,7 @@ read_agent_command() {
   if declare -F agentic_dev_agent_command >/dev/null 2>&1; then
     agentic_dev_agent_command
   else
-    printf '%s' "agent"
+    printf '%s' "cursor-agent"
   fi
 }
 
@@ -64,7 +64,7 @@ read_layout_review() {
 RECONFIGURE=0
 
 export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
-export DEV_LAYOUT_PLUGIN_REF="v0.2.6"
+export DEV_LAYOUT_PLUGIN_REF="v0.2.8"
 PICKR_PLUGIN_REPO="tomasvarga/herdr-pickr"
 PICKR_PLUGIN_REF="e393ef593e44d2497f43d20aa7b0e4a26ea3d445"
 WORKTRUNK_PLUGIN_REPO="devashish2203/herdr-worktrunk"
@@ -510,10 +510,10 @@ prompt_user_config() {
   log "  7) custom"
   log ""
   printf 'Choice [1-7]: '
-  local choice custom_cmd cmd="agent"
+  local choice custom_cmd cmd="cursor-agent"
   read_tty choice
   case "$choice" in
-    1|cursor|agent) cmd="agent" ;;
+    1|cursor|agent|cursor-agent) cmd="cursor-agent" ;;
     2|grok) cmd="grok" ;;
     3|pi) cmd="pi" ;;
     4|codex) cmd="codex" ;;
@@ -522,9 +522,9 @@ prompt_user_config() {
     7|custom)
       printf 'Enter custom command: '
       read_tty custom_cmd
-      cmd="${custom_cmd:-agent}"
+      cmd="${custom_cmd:-cursor-agent}"
       ;;
-    ""|*) cmd="agent" ;;
+    ""|*) cmd="cursor-agent" ;;
   esac
 
   log ""
@@ -636,6 +636,25 @@ _recorded_install_source() {
   printf '%s' "$src"
 }
 
+migrate_cursor_cli_command() {
+  local dest="$AGENTIC_DEV_USER_CONFIG" tmp
+  [[ -f "$dest" ]] || return 0
+  grep -Eq '^command[[:space:]]*=[[:space:]]*"agent"[[:space:]]*$' "$dest" || return 0
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would migrate agent command agent → cursor-agent"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  awk '
+    /^command[[:space:]]*=[[:space:]]*"agent"[[:space:]]*$/ {
+      sub(/"agent"/, "\"cursor-agent\"")
+    }
+    { print }
+  ' "$dest" >"$tmp"
+  mv "$tmp" "$dest"
+  info "migrated agent command to cursor-agent"
+}
+
 record_install_source() {
   local src
   src="$(install_src_dir)"
@@ -735,6 +754,7 @@ deploy_configs() {
   local entry rel dest
 
   prompt_user_config
+  migrate_cursor_cli_command
 
   ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
   ensure_dir "$AGENTIC_DEV_SHELL_DIR"

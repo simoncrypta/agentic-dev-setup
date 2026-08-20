@@ -57,6 +57,8 @@ assert_eq "bash" "$(detect_shell_name)" "detect_shell_name follows bash \$SHELL"
 assert_eq "${HOME}/.bashrc" "$(shell_rc_for bash)" "bash rc is ~/.bashrc"
 SHELL="$saved_shell"
 
+assert_contains "$(default_user_config)" 'command = "cursor-agent"' \
+  "default config uses cursor-agent"
 assert_contains "$(default_user_config)" 'review = "tuicr"' \
   "default config includes review"
 assert_contains "$(default_user_config)" 'editor = "nvim"' \
@@ -65,6 +67,7 @@ assert_contains "$(default_user_config)" 'editor = "nvim"' \
 mkdir -p "$AGENTIC_DEV_CONFIG_DIR"
 cp "$ROOT/config/agentic-dev/config-reader.sh" "$AGENTIC_DEV_CONFIG_DIR/config-reader.sh"
 
+assert_eq "cursor-agent" "$(read_agent_command)" "agent defaults to cursor-agent"
 assert_eq "tuicr" "$(read_layout_review)" "review defaults to tuicr"
 assert_eq "nvim" "$(read_layout_editor)" "editor defaults to nvim"
 
@@ -75,6 +78,8 @@ assert_eq "fresh" "$(read_layout_editor)" "write_user_config stores explorer"
 
 write_user_config agent tuicr tode
 assert_eq "tode" "$(read_layout_editor)" "write_user_config stores tode"
+migrate_cursor_cli_command
+assert_eq "cursor-agent" "$(read_agent_command)" "migrates agent command to cursor-agent"
 
 # Doctor reports configured tools, not hardcoded tuicr/nvim.
 case_dir="$TMP_DIR/doctor-hunk-fresh"

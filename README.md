@@ -67,7 +67,7 @@ On install you'll pick the command for each pane:
 
 **Agent**
 
-1. `cursor` (runs `agent`)
+1. `cursor` (runs `cursor-agent`)
 2. `grok`
 3. `pi`
 4. `codex`
@@ -95,13 +95,13 @@ Saved to `~/.config/agentic-dev/config.toml`. Change later with `agentic-dev rec
 
 Install deploys [`skills/handoff/`](skills/handoff/) to the Agent Skills path [`~/.agents/skills/handoff`](https://agentskills.io/home). Call it by name: **`handoff`**.
 
-Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the configured agent (`agent` for Cursor, `grok`, …), and remember where it is.
+Primary workflow: from the main repo checkout inside Herdr, spawn a sibling worktree as a Herdr worktree-group child (subspace), apply the sticky-agent layout, start the configured agent (`cursor-agent` for Cursor, `grok`, …), and remember where it is.
 
 Agents that already discover `~/.agents/skills` (Cursor) need no extra link. Grok, Codex, OpenCode, Claude, and pi get a symlink into their agent-specific global skills dir:
 
 | Agent choice | Extra link |
 |--------------|------------|
-| `cursor` (`agent`) | none (`~/.agents/skills` only) |
+| `cursor` (`cursor-agent`) | none (`~/.agents/skills` only) |
 | `grok` | `~/.grok/skills/handoff` |
 | `pi` | `~/.pi/agent/skills/handoff` |
 | `codex` | `~/.codex/skills/handoff` |
@@ -399,14 +399,14 @@ Minimal config:
 
 ```toml
 [agent]
-command = "agent"
+command = "cursor-agent"
 
 [layout]
 review = "tuicr"
 editor = "nvim"
 ```
 
-Without config, the agent pane defaults to `agent`, review to `tuicr`, and the explorer tab uses `$EDITOR` or `nvim`.
+Without config, the agent pane defaults to `cursor-agent`, review to `tuicr`, and the explorer tab uses `$EDITOR` or `nvim`.
 
 ### Invoke without keybindings
 

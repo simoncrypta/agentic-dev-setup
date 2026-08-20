@@ -114,7 +114,7 @@ doctor_skill() {
     log "  ok  skill $AGENTIC_DEV_SKILL_ID [$AGENTIC_DEV_SKILL_DIR]"
   fi
 
-  agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
   if agent_skills_dir="$(skill_agent_extra_global_dirs "$agent_cmd" 2>/dev/null)"; then
     link="${agent_skills_dir}/${AGENTIC_DEV_SKILL_ID}"
     if [[ -L "$link" ]] && _skill_link_is_ours "$link"; then

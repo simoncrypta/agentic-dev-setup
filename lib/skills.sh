@@ -109,7 +109,7 @@ deploy_skills() {
   deploy_skill_tree
   scrub_managed_skill_extra_links
 
-  agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
   if agent_skills_dir="$(skill_agent_extra_global_dirs "$agent_cmd")"; then
     ensure_skill_symlink "$agent_skills_dir"
   else

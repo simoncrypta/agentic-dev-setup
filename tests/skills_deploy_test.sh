@@ -48,23 +48,23 @@ EOF
 }
 
 test_deploy_agents_path_for_cursor() {
-  write_agent_config agent
+  write_agent_config cursor-agent
   deploy_skills >/dev/null
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing"
   grep -q '^name: handoff$' "$AGENTIC_DEV_SKILL_DIR/SKILL.md" || fail "skill frontmatter missing"
   [[ -f "$AGENTIC_DEV_SKILL_DIR/resources/handoff.md" ]] || fail "resource handoff.md missing"
   [[ -f "$AGENTIC_DEV_SKILL_DIR/MANIFEST" ]] || fail "MANIFEST missing from deploy_tree"
   [[ ! -e "$HOME/.cursor/skills/handoff" ]] || fail "cursor should use ~/.agents/skills only"
-  printf 'PASS: deploy_skills installs ~/.agents/handoff for cursor/agent\n'
+  printf 'PASS: deploy_skills installs ~/.agents/handoff for cursor-agent\n'
 }
 
 test_reconfigure_scrubs_orphan_extra_link() {
   write_agent_config codex
   deploy_skills >/dev/null
   [[ -L "$HOME/.codex/skills/handoff" ]] || fail "codex skill symlink missing"
-  write_agent_config agent
+  write_agent_config cursor-agent
   deploy_skills >/dev/null
-  [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "codex orphan link should be scrubbed on reconfigure to agent"
+  [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "codex orphan link should be scrubbed on reconfigure to cursor-agent"
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing after scrub"
   printf 'PASS: deploy_skills scrubs orphan extra links on agent switch\n'
 }
@@ -98,7 +98,7 @@ test_grok_gets_extra_skill_link() {
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for grok"
   [[ -L "$HOME/.grok/skills/handoff" ]] || fail "grok skill symlink missing"
   [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "grok should not create a codex link"
-  write_agent_config agent
+  write_agent_config cursor-agent
   deploy_skills >/dev/null
   [[ ! -e "$HOME/.grok/skills/handoff" ]] || fail "grok orphan link should be scrubbed on reconfigure"
   printf 'PASS: deploy_skills links ~/.grok/skills/handoff for grok\n'
@@ -110,7 +110,7 @@ test_pi_gets_extra_skill_link() {
   deploy_skills >/dev/null
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for pi"
   [[ -L "$HOME/.pi/agent/skills/handoff" ]] || fail "pi skill symlink missing"
-  write_agent_config agent
+  write_agent_config cursor-agent
   deploy_skills >/dev/null
   [[ ! -e "$HOME/.pi/agent/skills/handoff" ]] || fail "pi orphan link should be scrubbed on reconfigure"
   printf 'PASS: deploy_skills links ~/.pi/agent/skills/handoff for pi\n'

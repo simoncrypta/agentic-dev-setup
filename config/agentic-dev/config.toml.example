@@ -1,6 +1,6 @@
 [agent]
-# cursor (command: agent) | grok | pi | codex | opencode | claude | <custom>
-command = "agent"
+# cursor (command: cursor-agent) | grok | pi | codex | opencode | claude | <custom>
+command = "cursor-agent"
 
 [layout]
 # tuicr | hunk | <custom command>

@@ -557,7 +557,7 @@ install_grok_binary() {
 
 ensure_selected_agent() {
   local cmd
-  cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
   case "$cmd" in
     grok) install_grok_binary || true ;;
     pi) maybe_mise_install pi pi || true ;;
@@ -625,7 +625,7 @@ herdr_integration_config_dir() {
 ensure_herdr_agent_integration() {
   local cmd target conf
   dep_present herdr || return 0
-  cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+  cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
   if ! target="$(herdr_integration_for_agent "$cmd")"; then
     info "no Herdr integration mapped for agent command '$cmd'"
     return 0
@@ -724,7 +724,7 @@ doctor_dependencies() {
   _doctor_configured_bin "$editor_bin" explorer || missing=$((missing + 1))
   if declare -F read_agent_command >/dev/null; then
     local agent_cmd agent_bin target status_out status_line
-    agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
+    agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
     agent_bin="${agent_cmd%% *}"
     case "$agent_bin" in
       agent|"") ;;
