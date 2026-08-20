@@ -208,12 +208,13 @@ ensure_adopted_github_plugin() {
 _managed_plugin_transaction() (
   local id="$1" repo="$2" ref="$3" previous_kind="$4"
   local previous_repo="$5" previous_ref="$6" previous_path="$7"
-  local registry snapshot restore_tmp source_path source_backup current_path
+  local registry snapshot restore_tmp write_tmp source_path source_backup current_path
   local rollback_started=0 rollback_ok=0
 
   registry="$(_herdr_plugin_registry_path)"
   snapshot="${registry}.agentic-dev-backup.$$"
   restore_tmp="${registry}.agentic-dev-restore.$$"
+  write_tmp="${registry}.agentic-dev-write.$$"
   source_path=""
   source_backup=""
 
@@ -221,6 +222,8 @@ _managed_plugin_transaction() (
     [[ "$rollback_started" -eq 1 ]] || return 0
     trap '' HUP INT TERM
     rollback_ok=0
+    # In-progress marker for the whole rollback. Keep it distinct from the
+    # atomic write temp so fixtures can observe rollback before cleanup.
     : >"$restore_tmp" || rollback_ok=1
 
     current_path=""
@@ -248,7 +251,7 @@ _managed_plugin_transaction() (
     fi
 
     if [[ -f "$snapshot" ]]; then
-      cp -p "$snapshot" "$restore_tmp" && mv "$restore_tmp" "$registry" || rollback_ok=1
+      cp -p "$snapshot" "$write_tmp" && mv "$write_tmp" "$registry" || rollback_ok=1
     else
       rollback_ok=1
     fi
@@ -258,7 +261,7 @@ _managed_plugin_transaction() (
     else
       warn "rollback for Herdr plugin $id was incomplete; previous source: ${previous_path:-$previous_repo@$previous_ref}"
     fi
-    rm -f "$restore_tmp" "$snapshot"
+    rm -f "$restore_tmp" "$write_tmp" "$snapshot"
     rollback_started=0
     return "$rollback_ok"
   }
@@ -271,7 +274,7 @@ _managed_plugin_transaction() (
     else
       trap '' HUP INT TERM
       rm -rf "$source_backup"
-      rm -f "$restore_tmp" "$snapshot"
+      rm -f "$restore_tmp" "$write_tmp" "$snapshot"
     fi
     exit "$status"
   }
@@ -305,7 +308,7 @@ _managed_plugin_transaction() (
     return 1
   }
   source_backup="${source_path}.agentic-dev-backup.$$"
-  [[ ! -e "$snapshot" && ! -e "$restore_tmp" && ! -e "$source_backup" ]] || {
+  [[ ! -e "$snapshot" && ! -e "$restore_tmp" && ! -e "$write_tmp" && ! -e "$source_backup" ]] || {
     warn "refusing migration because a transaction backup path already exists"
     return 1
   }
@@ -338,7 +341,7 @@ _managed_plugin_transaction() (
   trap - HUP INT TERM
   rollback_started=0
   rm -rf "$source_backup"
-  rm -f "$snapshot" "$restore_tmp"
+  rm -f "$snapshot" "$restore_tmp" "$write_tmp"
 )
 
 ensure_managed_github_plugin() {

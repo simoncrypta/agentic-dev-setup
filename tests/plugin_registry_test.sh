@@ -136,22 +136,28 @@ remove_managed_source() {
 
 signal_after_remove() {
   local parent="$PPID"
-  [[ "${FAKE_HERDR_SIGNAL_AFTER_REMOVE:-0}" != 1 ]] || {
-    printf 'signal TERM after-remove\n' >>"$HERDR_CALL_LOG"
-    kill -TERM "$parent"
-  }
+  # Watcher must start before the first TERM; bash defers the parent trap
+  # until this process exits, and busy-poll so fast CI disks cannot hide the marker.
   [[ "${FAKE_HERDR_DOUBLE_TERM:-0}" != 1 ]] || {
     (
+      trap '' HUP INT TERM
       local attempt
-      for attempt in $(seq 1 500); do
+      for attempt in $(seq 1 10000); do
         if compgen -G "${registry}.agentic-dev-restore.*" >/dev/null; then
           printf 'signal TERM during-rollback\n' >>"$HERDR_CALL_LOG"
           kill -TERM "$parent" 2>/dev/null || true
           exit 0
         fi
-        sleep 0.002
+        # Yield so the parent can run rollback on a single core.
+        if (( attempt % 25 == 0 )); then
+          sleep 0.001
+        fi
       done
     ) &
+  }
+  [[ "${FAKE_HERDR_SIGNAL_AFTER_REMOVE:-0}" != 1 ]] || {
+    printf 'signal TERM after-remove\n' >>"$HERDR_CALL_LOG"
+    kill -TERM "$parent"
   }
 }
 
