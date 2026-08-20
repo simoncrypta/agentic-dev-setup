@@ -20,8 +20,9 @@ dark_name = "gruvbox"
 
 [terminal]
 new_cwd = "follow"
-# Leave default_shell unset so Herdr uses $SHELL (zsh on modern macOS).
+# Unset default_shell: Herdr uses $SHELL (bash on typical Linux, zsh on macOS).
 # Forcing bash makes macOS print "update your account to use zsh" in every pane.
+shell_mode = "auto"
 
 [keys]
 prefix = "ctrl+space"

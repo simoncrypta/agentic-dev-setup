@@ -45,6 +45,17 @@ warn() { printf '%s\n' "$*" >&2; }
 if grep -Eq '^[[:space:]]*default_shell[[:space:]]*=' "$ROOT/config/herdr/config.toml"; then
   fail "shipped herdr config must not set default_shell (macOS /bin/bash nags to switch to zsh)"
 fi
+grep -Eq '^[[:space:]]*shell_mode[[:space:]]*=[[:space:]]*"auto"' "$ROOT/config/herdr/config.toml" \
+  || fail "shipped herdr config must set shell_mode = auto (login on macOS, non-login on Linux)"
+
+saved_shell="${SHELL:-}"
+SHELL=/bin/zsh
+assert_eq "zsh" "$(detect_shell_name)" "detect_shell_name follows zsh \$SHELL"
+assert_eq "${HOME}/.zshrc" "$(shell_rc_for zsh)" "zsh rc is ~/.zshrc"
+SHELL=/bin/bash
+assert_eq "bash" "$(detect_shell_name)" "detect_shell_name follows bash \$SHELL"
+assert_eq "${HOME}/.bashrc" "$(shell_rc_for bash)" "bash rc is ~/.bashrc"
+SHELL="$saved_shell"
 
 assert_contains "$(default_user_config)" 'review = "tuicr"' \
   "default config includes review"
