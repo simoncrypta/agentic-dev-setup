@@ -11,13 +11,13 @@ Install:
 
 install.sh options:
   -h, --help   Show this help
-  -y, --yes    Non-interactive (skip agent prompt; use existing/default config)
+  -y, --yes    Non-interactive (skip layout prompts; use existing/default config)
 
 Post-install CLI (agentic-dev):
   help          This help
   doctor        Check dependencies and integration
   update        Re-sync configs, helper, and skill from the install source
-  reconfigure   Re-prompt agent command (does not re-sync the helper)
+  reconfigure   Re-prompt agent / review / explorer commands (does not re-sync the helper)
   dry-run       Show planned actions without changes
   uninstall     Remove marker block and managed files
 
@@ -31,7 +31,7 @@ Shell commands:
 
 Layout:
   Left 50%: agent pane (sticky) — command from ~/.config/agentic-dev/config.toml
-  Tabs: review (tuicr), explorer (nvim), terminal (shell)
+  Tabs: review (tuicr or hunk), explorer (nvim / nano / tode / fresh), terminal (shell)
 
 Herdr keys (prefix = Ctrl-Space):
   prefix+D           Apply dev layout in current workspace
@@ -57,15 +57,16 @@ Omarchy / Linux:
   Native Omarchy Herdr is SUPER+CTRL+RETURN; packages via omarchy pkg add
 
 Install order:
-  mise first (herdr, worktrunk, fzf, jq, nvim, lazygit, grok)
+  mise first (herdr, worktrunk, fzf, jq, lazygit, grok, hunk)
   then omarchy pkg add on Omarchy, then brew / apt / pacman / upstream
+  selected review/explorer tools only (tuicr or hunk; nvim / nano / tode / fresh)
 
 Ubuntu / Debian:
   Uses apt for git, fzf, jq, neovim, lazygit, curl when mise is unavailable
-  Downloads herdr, worktrunk, and tuicr from upstream releases when needed
+  Downloads herdr, worktrunk, and selected review/explorer tools from upstream when needed
 
 Config:
-  ~/.config/agentic-dev/config.toml      agent command + editor
+  ~/.config/agentic-dev/config.toml      agent, review, and explorer commands
   ~/.config/herdr/config.toml            keybindings + plugin actions
   ~/.config/herdr/plugins/dev-layout/    dev layout plugin
   ~/.config/worktrunk/herdr-layout.sh
@@ -93,6 +94,8 @@ show_summary() {
   log "agentic-dev-setup installed (v${AGENTIC_DEV_VERSION})"
   log ""
   log "Agent command: $(read_agent_command 2>/dev/null || echo agent)"
+  log "Review command: $(read_layout_review 2>/dev/null || echo tuicr)"
+  log "Explorer command: $(read_layout_editor 2>/dev/null || echo nvim)"
   log "Config: ${AGENTIC_DEV_USER_CONFIG}"
   log "Skill: ${AGENTIC_DEV_SKILL_DIR}"
   log ""

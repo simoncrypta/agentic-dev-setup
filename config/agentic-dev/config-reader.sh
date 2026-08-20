@@ -19,3 +19,14 @@ agentic_dev_layout_editor() {
   fi
   printf '%s' "$editor"
 }
+
+agentic_dev_layout_review() {
+  local config="${HOME}/.config/agentic-dev/config.toml"
+  local review="tuicr"
+  if [[ -r "$config" ]]; then
+    local from_config
+    from_config="$(awk -F'"' '/^review[[:space:]]*=/ { print $2; exit }' "$config")"
+    [[ -n "$from_config" ]] && review="$from_config"
+  fi
+  printf '%s' "$review"
+}

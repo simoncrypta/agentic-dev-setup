@@ -65,7 +65,7 @@ cmd_doctor() {
     failures=1
   fi
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]]; then
-    log "  ok  $AGENTIC_DEV_USER_CONFIG (agent=$(read_agent_command))"
+    log "  ok  $AGENTIC_DEV_USER_CONFIG (agent=$(read_agent_command) review=$(read_layout_review) explorer=$(read_layout_editor))"
   else
     log "  missing  $AGENTIC_DEV_USER_CONFIG"
     failures=1
@@ -104,12 +104,13 @@ cmd_update() {
 
 cmd_reconfigure() {
   RECONFIGURE=1
-  prompt_agent_command
+  prompt_user_config
   deploy_skills
   ensure_selected_agent
+  ensure_selected_layout_tools
   sync_omarchy_default_agent
-  info "agent command updated — new workspaces will use: $(read_agent_command)"
-  info "restart agent panes or run 'dev' in a new workspace to apply"
+  info "layout updated — agent=$(read_agent_command) review=$(read_layout_review) explorer=$(read_layout_editor)"
+  info "restart panes or run 'dev' in a new workspace to apply"
   info "layout helper is unchanged; run agentic-dev update or ./install.sh from the clone to re-sync it"
 }
 
@@ -121,7 +122,7 @@ Commands:
   help          Show full help
   doctor        Check dependencies and integration
   update        Re-sync configs, helper, and skill
-  reconfigure   Re-prompt agent command (not a full redeploy)
+  reconfigure   Re-prompt agent / review / explorer commands (not a full redeploy)
   dry-run       Show planned install actions
   uninstall     Remove integration
 

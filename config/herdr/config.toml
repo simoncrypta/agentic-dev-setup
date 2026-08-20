@@ -77,13 +77,13 @@ description = "Focus agent pane"
 key = "prefix+2"
 type = "plugin_action"
 command = "agentic-dev.dev-layout.select_review"
-description = "Review tab (tuicr)"
+description = "Review tab"
 
 [[keys.command]]
 key = "prefix+3"
 type = "plugin_action"
 command = "agentic-dev.dev-layout.select_explorer"
-description = "Explorer tab (nvim)"
+description = "Explorer tab"
 
 [[keys.command]]
 key = "prefix+4"

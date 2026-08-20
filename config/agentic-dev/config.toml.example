@@ -3,4 +3,7 @@
 command = "agent"
 
 [layout]
+# tuicr | hunk | <custom command>
+review = "tuicr"
+# nvim | nano | tode | fresh | <custom command>
 editor = "nvim"

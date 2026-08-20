@@ -7,6 +7,7 @@ default_user_config() {
 command = "agent"
 
 [layout]
+review = "tuicr"
 editor = "nvim"
 EOF
 }
@@ -51,10 +52,19 @@ read_layout_editor() {
   fi
 }
 
+read_layout_review() {
+  ensure_config_reader || true
+  if declare -F agentic_dev_layout_review >/dev/null 2>&1; then
+    agentic_dev_layout_review
+  else
+    printf '%s' "tuicr"
+  fi
+}
+
 RECONFIGURE=0
 
 export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
-export DEV_LAYOUT_PLUGIN_REF="v0.2.3"
+export DEV_LAYOUT_PLUGIN_REF="v0.2.4"
 PICKR_PLUGIN_REPO="tomasvarga/herdr-pickr"
 PICKR_PLUGIN_REF="e393ef593e44d2497f43d20aa7b0e4a26ea3d445"
 WORKTRUNK_PLUGIN_REPO="devashish2203/herdr-worktrunk"
@@ -444,18 +454,38 @@ deploy_pickr_config() {
   deploy_install_file "$template_rel" "$dest"
 }
 
-prompt_agent_command() {
+write_user_config() {
+  local cmd="$1" review="$2" editor="$3"
+  ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd review=$review editor=$editor)"
+    return 0
+  fi
+  cat >"$AGENTIC_DEV_USER_CONFIG" <<EOF
+[agent]
+command = "$cmd"
+
+[layout]
+review = "$review"
+editor = "$editor"
+EOF
+  info "saved config to $AGENTIC_DEV_USER_CONFIG"
+}
+
+prompt_user_config() {
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$RECONFIGURE" -ne 1 ]]; then
     info "using existing agent command: $(read_agent_command)"
+    info "using existing review command: $(read_layout_review)"
+    info "using existing explorer command: $(read_layout_editor)"
     return 0
   fi
 
   if [[ "$YES" -eq 1 ]]; then
-    ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
     if [[ ! -f "$AGENTIC_DEV_USER_CONFIG" ]]; then
       if [[ "$DRY_RUN" -eq 1 ]]; then
         info "[dry-run] would write default $AGENTIC_DEV_USER_CONFIG"
       else
+        ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
         default_user_config >"$AGENTIC_DEV_USER_CONFIG"
       fi
     fi
@@ -490,21 +520,55 @@ prompt_agent_command() {
     ""|*) cmd="agent" ;;
   esac
 
-  local editor
-  editor="$(read_layout_editor)"
-  ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd)"
-    return 0
-  fi
-  cat >"$AGENTIC_DEV_USER_CONFIG" <<EOF
-[agent]
-command = "$cmd"
+  log ""
+  log "Which command should the review pane auto-start?"
+  log "  1) tuicr"
+  log "  2) hunk"
+  log "  3) custom"
+  log ""
+  printf 'Choice [1-3]: '
+  local review="tuicr"
+  read_tty choice
+  case "$choice" in
+    1|tuicr) review="tuicr" ;;
+    2|hunk) review="hunk" ;;
+    3|custom)
+      printf 'Enter custom command: '
+      read_tty custom_cmd
+      review="${custom_cmd:-tuicr}"
+      ;;
+    ""|*) review="tuicr" ;;
+  esac
 
-[layout]
-editor = "$editor"
-EOF
-  info "saved agent command to $AGENTIC_DEV_USER_CONFIG"
+  log ""
+  log "Which command should the explorer pane auto-start?"
+  log "  1) nvim"
+  log "  2) nano"
+  log "  3) tode"
+  log "  4) fresh"
+  log "  5) custom"
+  log ""
+  printf 'Choice [1-5]: '
+  local editor="nvim"
+  read_tty choice
+  case "$choice" in
+    1|nvim|neovim) editor="nvim" ;;
+    2|nano) editor="nano" ;;
+    3|tode) editor="tode" ;;
+    4|fresh) editor="fresh" ;;
+    5|custom)
+      printf 'Enter custom command: '
+      read_tty custom_cmd
+      editor="${custom_cmd:-nvim}"
+      ;;
+    ""|*) editor="nvim" ;;
+  esac
+
+  write_user_config "$cmd" "$review" "$editor"
+}
+
+prompt_agent_command() {
+  prompt_user_config
 }
 
 deploy_tree() {
@@ -661,7 +725,7 @@ deploy_configs() {
   )
   local entry rel dest
 
-  prompt_agent_command
+  prompt_user_config
 
   ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
   ensure_dir "$AGENTIC_DEV_SHELL_DIR"
@@ -691,6 +755,7 @@ deploy_configs() {
   deploy_finalize_permissions
   record_install_source
   ensure_selected_agent
+  ensure_selected_layout_tools
   if declare -F sync_omarchy_default_agent >/dev/null 2>&1; then
     sync_omarchy_default_agent
   fi

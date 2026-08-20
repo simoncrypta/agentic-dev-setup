@@ -169,14 +169,16 @@ case "${1:-} ${2:-}" in
         *) shift ;;
       esac
     done
-    if [[ "${FAKE_HERDR_SIGNAL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.3}" ]]; then
-      kill -TERM "$PPID"
-      exit 143
+    if [[ "${FAKE_HERDR_SIGNAL_INSTALL:-0}" == 1 ]]; then
+      if [[ -z "${FAKE_HERDR_FAILURE_REF:-}" || "$ref" == "$FAKE_HERDR_FAILURE_REF" ]]; then
+        kill -TERM "$PPID"
+        exit 143
+      fi
     fi
-    if [[ "${FAKE_HERDR_FAIL_INSTALL:-0}" == 1 \
-      && "$ref" == "${FAKE_HERDR_FAILURE_REF:-v0.2.3}" ]]; then
-      exit 42
+    if [[ "${FAKE_HERDR_FAIL_INSTALL:-0}" == 1 ]]; then
+      if [[ -z "${FAKE_HERDR_FAILURE_REF:-}" || "$ref" == "$FAKE_HERDR_FAILURE_REF" ]]; then
+        exit 42
+      fi
     fi
     [[ "${FAKE_HERDR_FAIL_ALL_INSTALL:-0}" != 1 ]] || exit 42
     [[ "${FAKE_HERDR_MISLEAD_INSTALL:-0}" != 1 ]] || exit 0

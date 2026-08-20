@@ -26,7 +26,7 @@ mise_can_install() {
   [[ -n "$spec" ]] || return 1
   [[ "$spec" == *:* ]] && return 0
   case "$spec" in
-    herdr|worktrunk|fzf|jq|neovim|lazygit|pi) return 0 ;;
+    herdr|worktrunk|fzf|jq|neovim|lazygit|pi|hunk) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -425,6 +425,124 @@ install_tuicr_binary() {
   rm -rf "$tmp"
 }
 
+install_hunk_binary() {
+  if dep_present hunk; then
+    info "present: hunk"
+    return 0
+  fi
+  if maybe_mise_install hunk hunk; then
+    return 0
+  fi
+  if has_brew; then
+    info "installing via brew: hunk"
+    if run brew install hunk && dep_present hunk; then
+      return 0
+    fi
+    warn "brew install hunk failed — trying hunk.dev installer"
+  fi
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
+  info "installing via https://hunk.dev/install.sh"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  curl -fsSL https://hunk.dev/install.sh | sh
+  ensure_mise_shims
+  hash -r 2>/dev/null || true
+  if dep_present hunk; then
+    return 0
+  fi
+  warn "hunk install may have succeeded but hunk is not on PATH"
+  return 1
+}
+
+install_tode_binary() {
+  if dep_present tode; then
+    info "present: tode"
+    return 0
+  fi
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
+  info "installing via https://tode.sh/install"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  curl -fsSL https://tode.sh/install | bash
+  ensure_mise_shims
+  hash -r 2>/dev/null || true
+  if dep_present tode; then
+    return 0
+  fi
+  warn "tode install may have succeeded but tode is not on PATH"
+  return 1
+}
+
+install_fresh_binary() {
+  if dep_present fresh; then
+    info "present: fresh"
+    return 0
+  fi
+  if has_brew; then
+    info "installing via brew: fresh-editor"
+    if run brew install fresh-editor && dep_present fresh; then
+      return 0
+    fi
+    warn "brew install fresh-editor failed — trying upstream installer"
+  fi
+  maybe_omarchy_pkg_install fresh-editor fresh && return 0
+  dep_present curl || maybe_omarchy_pkg_install curl curl \
+    || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
+  info "installing via https://raw.githubusercontent.com/sinelaw/fresh/master/scripts/install.sh"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  curl -fsSL https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh | sh
+  ensure_mise_shims
+  hash -r 2>/dev/null || true
+  if dep_present fresh; then
+    return 0
+  fi
+  warn "fresh install may have succeeded but fresh is not on PATH"
+  return 1
+}
+
+ensure_selected_layout_tools() {
+  local review editor review_bin editor_bin
+  review="$(read_layout_review 2>/dev/null || printf '%s' "tuicr")"
+  editor="$(read_layout_editor 2>/dev/null || printf '%s' "nvim")"
+  review_bin="${review%% *}"
+  editor_bin="${editor%% *}"
+
+  case "$review_bin" in
+    tuicr) install_tuicr_binary || warn "missing tuicr (review tab needs it)" ;;
+    hunk) install_hunk_binary || warn "missing hunk (review tab needs it)" ;;
+    "") ;;
+    *)
+      if dep_present "$review_bin"; then
+        info "present: $review_bin"
+      else
+        warn "missing $review_bin (configured review command)"
+      fi
+      ;;
+  esac
+
+  case "$editor_bin" in
+    nvim|neovim) install_dep nvim neovim || true ;;
+    nano) install_dep nano nano || true ;;
+    tode) install_tode_binary || warn "missing tode (explorer tab needs it)" ;;
+    fresh) install_fresh_binary || warn "missing fresh (explorer tab needs it)" ;;
+    vim) install_dep vim vim || true ;;
+    "") ;;
+    *)
+      if dep_present "$editor_bin"; then
+        info "present: $editor_bin"
+      else
+        warn "missing $editor_bin (configured explorer command)"
+      fi
+      ;;
+  esac
+}
+
 install_grok_binary() {
   if dep_present grok; then
     info "present: grok"
@@ -543,14 +661,24 @@ install_dependencies() {
   install_worktrunk_binary || true
   install_dep fzf || true
   install_dep jq || true
-  install_tuicr_binary || warn "missing tuicr (review tab needs it)"
-  install_dep nvim neovim || true
   install_dep lazygit || true
+}
+
+_doctor_configured_bin() {
+  local cmd="$1" role="$2"
+  [[ -n "$cmd" ]] || return 0
+  if dep_present "$cmd"; then
+    log "  ok  $cmd ($(command -v "$cmd")) (configured $role)"
+  else
+    log "  missing  $cmd (configured $role command)"
+    return 1
+  fi
 }
 
 doctor_dependencies() {
   local missing=0 found path output rc
-  for cmd in herdr git wt fzf jq tuicr nvim lazygit; do
+  local review_cmd review_bin editor_cmd editor_bin
+  for cmd in herdr git wt fzf jq lazygit; do
     if [[ "$cmd" == herdr ]] && dep_present herdr; then
       path="$(command -v herdr)"
       if output="$(herdr_version_output)"; then
@@ -582,6 +710,18 @@ doctor_dependencies() {
       missing=$((missing + 1))
     fi
   done
+  review_bin="tuicr"
+  editor_bin="nvim"
+  if declare -F read_layout_review >/dev/null; then
+    review_cmd="$(read_layout_review 2>/dev/null || printf '%s' "tuicr")"
+    review_bin="${review_cmd%% *}"
+  fi
+  if declare -F read_layout_editor >/dev/null; then
+    editor_cmd="$(read_layout_editor 2>/dev/null || printf '%s' "nvim")"
+    editor_bin="${editor_cmd%% *}"
+  fi
+  _doctor_configured_bin "$review_bin" review || missing=$((missing + 1))
+  _doctor_configured_bin "$editor_bin" explorer || missing=$((missing + 1))
   if declare -F read_agent_command >/dev/null; then
     local agent_cmd agent_bin target status_out status_line
     agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "agent")"
