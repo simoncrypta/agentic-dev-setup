@@ -97,9 +97,10 @@ reset_fixture() {
   : >"$HERDR_CALL_LOG"
   unset FAKE_HERDR_FAIL_INSTALL FAKE_HERDR_MISLEAD_INSTALL \
     FAKE_HERDR_SIGNAL_INSTALL FAKE_HERDR_LIST_OUTPUT FAKE_HERDR_FAIL_ALL_INSTALL \
-    FAKE_HERDR_FAIL_REMOVE FAKE_HERDR_SIGNAL_AFTER_REMOVE FAKE_HERDR_DOUBLE_TERM \
+    FAKE_HERDR_FAIL_REMOVE FAKE_HERDR_SIGNAL_AFTER_REMOVE \
     FAKE_HERDR_UNTRUSTED_PLUGIN_ROOT FAKE_HERDR_SWAP_MANAGED_ROOT \
-    FAKE_HERDR_SWAP_MANAGED_ROOT_TARGET FAKE_HERDR_VERSION_OUTPUT
+    FAKE_HERDR_SWAP_MANAGED_ROOT_TARGET FAKE_HERDR_VERSION_OUTPUT \
+    AGENTIC_DEV_ON_ROLLBACK_ARMED
 }
 
 mkdir -p "$FAKE_BIN"
@@ -136,25 +137,6 @@ remove_managed_source() {
 
 signal_after_remove() {
   local parent="$PPID"
-  # Watcher must start before the first TERM; bash defers the parent trap
-  # until this process exits, and busy-poll so fast CI disks cannot hide the marker.
-  [[ "${FAKE_HERDR_DOUBLE_TERM:-0}" != 1 ]] || {
-    (
-      trap '' HUP INT TERM
-      local attempt
-      for attempt in $(seq 1 10000); do
-        if compgen -G "${registry}.agentic-dev-restore.*" >/dev/null; then
-          printf 'signal TERM during-rollback\n' >>"$HERDR_CALL_LOG"
-          kill -TERM "$parent" 2>/dev/null || true
-          exit 0
-        fi
-        # Yield so the parent can run rollback on a single core.
-        if (( attempt % 25 == 0 )); then
-          sleep 0.001
-        fi
-      done
-    ) &
-  }
   [[ "${FAKE_HERDR_SIGNAL_AFTER_REMOVE:-0}" != 1 ]] || {
     printf 'signal TERM after-remove\n' >>"$HERDR_CALL_LOG"
     kill -TERM "$parent"
@@ -685,6 +667,11 @@ test_term_immediately_after_unlink_restores_snapshot() {
   printf 'PASS: rollback is armed before first removal\n'
 }
 
+send_term_during_rollback() {
+  printf 'signal TERM during-rollback\n' >>"$HERDR_CALL_LOG"
+  kill -TERM "$BASHPID" 2>/dev/null || true
+}
+
 test_second_term_during_one_rollback_is_deferred() {
   local before after signal_count
   reset_fixture
@@ -693,12 +680,11 @@ test_second_term_during_one_rollback_is_deferred() {
   append_github pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF"
   before="$(checksum "$(registry_path)")"
   export FAKE_HERDR_SIGNAL_AFTER_REMOVE=1
-  export FAKE_HERDR_DOUBLE_TERM=1
+  export AGENTIC_DEV_ON_ROLLBACK_ARMED=send_term_during_rollback
   if ensure_managed_github_plugin agentic-dev.dev-layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "double-TERM transaction returned success"
   fi
-  sleep 0.05
   signal_count="$(grep -c '^signal TERM ' "$HERDR_CALL_LOG" || true)"
   assert_eq '2' "$signal_count" "fixture did not deliver two TERM signals in one transaction"
   after="$(checksum "$(registry_path)")"

@@ -221,6 +221,9 @@ _managed_plugin_transaction() (
   rollback() {
     [[ "$rollback_started" -eq 1 ]] || return 0
     trap '' HUP INT TERM
+    # Optional hook after HUP/INT/TERM are masked. Tests use this to inject a
+    # second TERM during rollback; production leaves it unset.
+    ${AGENTIC_DEV_ON_ROLLBACK_ARMED:-:} || true
     rollback_ok=0
     # In-progress marker for the whole rollback. Keep it distinct from the
     # atomic write temp so fixtures can observe rollback before cleanup.
