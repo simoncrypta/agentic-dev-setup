@@ -3,7 +3,7 @@
 command = "cursor-agent"
 
 [layout]
-# tuicr | hunk | <custom command>
-review = "tuicr"
-# nvim | nano | tode | fresh | <custom command>
-editor = "nvim"
+# Review pane always runs: hunk diff --watch
+review = "hunk"
+# Sidebar file opens always run: fresh <path>
+editor = "fresh"

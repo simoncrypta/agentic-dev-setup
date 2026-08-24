@@ -1,0 +1,602 @@
+#!/usr/bin/env bash
+# Agentic three-column Herdr layout: agent | review/shell | sidebar.
+# shellcheck disable=SC1091
+set -euo pipefail
+
+HERDR="${HERDR_BIN_PATH:-herdr}"
+METADATA_SOURCE="agentic-dev.layout"
+
+_plugin_root() {
+  if [[ -n "${HERDR_PLUGIN_ROOT:-}" ]]; then
+    printf '%s' "$HERDR_PLUGIN_ROOT"
+  else
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+  fi
+}
+
+PLUGIN_ROOT="$(_plugin_root)"
+
+_layout_core() {
+  local bin="${PLUGIN_ROOT}/target/release/herdr-layout"
+  [[ -x "$bin" ]] || bin="${PLUGIN_ROOT}/target/debug/herdr-layout"
+  if [[ ! -x "$bin" ]]; then
+    printf 'agentic-layout: herdr-layout binary missing (cargo build --release -p herdr-sidebar)\n' >&2
+    return 127
+  fi
+  "$bin" "$@"
+}
+
+# shellcheck source=config-reader.sh
+source "$PLUGIN_ROOT/config-reader.sh"
+# shellcheck source=state.sh
+source "$PLUGIN_ROOT/state.sh"
+# shellcheck source=topology.sh
+source "$PLUGIN_ROOT/topology.sh"
+
+_herdr_json() {
+  "$HERDR" "$@" 2>/dev/null
+}
+
+_jq() {
+  jq -r "$@"
+}
+
+_agent_cmd() {
+  if declare -F agentic_dev_agent_command >/dev/null 2>&1; then
+    agentic_dev_agent_command
+  else
+    printf '%s' "cursor-agent"
+  fi
+}
+
+_file_editor() {
+  printf '%s' "fresh"
+}
+
+# Column shares of the full tab: agent 2/6, center 3/6 (biggest), sidebar 1/6.
+_agent_ratio() {
+  if declare -F agentic_dev_layout_agent_ratio >/dev/null 2>&1; then
+    agentic_dev_layout_agent_ratio
+  else
+    printf '%s' "0.333333"
+  fi
+}
+
+_sidebar_ratio() {
+  if declare -F agentic_dev_layout_sidebar_ratio >/dev/null 2>&1; then
+    agentic_dev_layout_sidebar_ratio
+  else
+    printf '%s' "0.166667"
+  fi
+}
+
+_layout_geometry() {
+  jq -n --argjson agent "$(_agent_ratio)" --argjson sidebar "$(_sidebar_ratio)" \
+    '{agent_ratio:$agent, sidebar_ratio:$sidebar}' | _layout_core --split-ratios
+}
+
+_agent_split_ratio() {
+  _layout_geometry | jq -r '.agent_split'
+}
+
+_sidebar_split_ratio() {
+  _layout_geometry | jq -r '.sidebar_split'
+}
+
+_agent_move_ratio() {
+  _layout_geometry | jq -r '.agent_move'
+}
+
+_id_after_move() {
+  local json="$1" fallback="$2" id
+  id="$(printf '%s' "${json:-{}}" | _jq '.result.move_result.pane.pane_id // .result.pane.pane_id // empty' 2>/dev/null || true)"
+  if [[ -n "$id" && "$id" != "null" ]]; then
+    printf '%s' "$id"
+  else
+    printf '%s' "$fallback"
+  fi
+}
+
+# Herdr plugin events wrap the payload in `.data` (0.8+). Older builds used a
+# top-level field; keep that one fallback.
+_event_id() {
+  local field="$1"
+  printf '%s' "${HERDR_PLUGIN_EVENT_JSON:-{}}" | jq -r --arg f "$field" \
+    '.data[$f] // .[$f] // empty' \
+    2>/dev/null || true
+}
+
+_review_launch() {
+  printf '%s' "hunk diff --watch"
+}
+
+_sidebar_bin() {
+  local root="$PLUGIN_ROOT" candidate
+  for candidate in "$root/target/release/herdr-sidebar" "$root/bin/herdr-sidebar"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  printf '%s' "$root/target/release/herdr-sidebar"
+}
+
+_login_shell() {
+  local shell="${SHELL:-}" resolved
+  if [[ -n "$shell" && -x "$shell" ]]; then
+    printf '%s' "$shell"
+    return 0
+  fi
+  if [[ -n "$shell" ]]; then
+    resolved="$(command -v "$shell" 2>/dev/null || true)"
+    if [[ -n "$resolved" && -x "$resolved" ]]; then
+      printf '%s' "$resolved"
+      return 0
+    fi
+  fi
+  if [[ "$(uname -s)" == Darwin && -x /bin/zsh ]]; then
+    printf '%s' "/bin/zsh"
+    return 0
+  fi
+  printf '%s' "bash"
+}
+
+_pane_run_login() {
+  local pane="$1" cmd="$2" sh
+  sh="$(_login_shell)"
+  _herdr_json pane run "$pane" "$(printf '%q' "$sh") -li -c $(printf '%q' "$cmd")" >/dev/null || true
+}
+
+_pane_run_sidebar() {
+  local pane="$1" sidebar_bin="$2"
+  local -a run_cmd=(env AGENTIC_LAYOUT_EMBEDDED=1 AGENTIC_LAYOUT_PLUGIN_ID=agentic-dev.layout)
+  run_cmd+=(HERDR_PLUGIN_ROOT="$PLUGIN_ROOT")
+  [[ -n "${HERDR_WORKSPACE_ID:-}" ]] && run_cmd+=(HERDR_WORKSPACE_ID="$HERDR_WORKSPACE_ID")
+  [[ -n "${HERDR_BIN_PATH:-}" ]] && run_cmd+=(HERDR_BIN_PATH="${HERDR_BIN_PATH}")
+  run_cmd+=("$sidebar_bin" --embedded)
+  _herdr_json pane run "$pane" "${run_cmd[@]}" >/dev/null 2>&1 || true
+}
+
+_shell_launch() {
+  local sh
+  sh="$(printf '%q' "$(_login_shell)")"
+  printf '%s' "clear; exec ${sh} -li"
+}
+
+_pane_exists() {
+  local pane_id="$1"
+  [[ -n "$pane_id" ]] || return 1
+  _herdr_json pane get "$pane_id" >/dev/null 2>&1
+}
+
+_pane_is_shell() {
+  local pane="$1" json agent
+  json="$(_herdr_json pane get "$pane")" || return 1
+  agent="$(printf '%s' "$json" | _jq '.result.pane.agent // .result.agent // empty')"
+  [[ -z "$agent" || "$agent" == "null" ]]
+}
+
+_maybe_start_agent_pane() {
+  local pane="$1" start_agent="${2:-1}"
+  [[ "$start_agent" == "1" && -n "$pane" ]] || return 0
+  _pane_is_shell "$pane" || return 0
+  _herdr_json pane run "$pane" "$(_agent_cmd)" >/dev/null || true
+}
+
+_restart_pane_cmd() {
+  local pane="$1" cmd="$2"
+  [[ -n "$pane" && -n "$cmd" ]] || return 0
+  if _pane_is_shell "$pane"; then
+    _pane_run_login "$pane" "$cmd"
+  else
+    _herdr_json pane run "$pane" "$cmd" >/dev/null 2>&1 || _pane_run_login "$pane" "$cmd"
+  fi
+}
+
+_ensure_pane_process() {
+  local pane="$1" cmd="$2"
+  [[ -n "$pane" && -n "$cmd" ]] || return 0
+  if _pane_is_shell "$pane"; then
+    _pane_run_login "$pane" "$cmd"
+  fi
+}
+
+_stamp_metadata() {
+  local pane="$1" role="$2" extra="${3:-}"
+  [[ -n "$pane" ]] || return 0
+  if [[ -n "$extra" ]]; then
+    _herdr_json pane report-metadata "$pane" --source "$METADATA_SOURCE" \
+      --token "agentic_role=$role" --token "$extra" >/dev/null 2>&1 || true
+  else
+    _herdr_json pane report-metadata "$pane" --source "$METADATA_SOURCE" \
+      --token "agentic_role=$role" >/dev/null 2>&1 || true
+  fi
+}
+
+_pane_label() {
+  local role="$1"
+  case "$role" in
+    agent) printf '%s' "Agent" ;;
+    center_review) printf '%s' "Review" ;;
+    center_shell) printf '%s' "Shell" ;;
+    sidebar) printf '%s' "Files" ;;
+    editor) printf '%s' "Editor" ;;
+    *) printf '%s' "$role" ;;
+  esac
+}
+
+_rename_pane() {
+  local pane="$1" role="$2"
+  [[ -n "$pane" ]] || return 0
+  _herdr_json pane rename "$pane" "$(_pane_label "$role")" >/dev/null 2>&1 || true
+}
+
+_dev_workspace_id() {
+  if [[ -n "${HERDR_WORKSPACE_ID:-}" ]]; then
+    printf '%s' "$HERDR_WORKSPACE_ID"
+    return 0
+  fi
+  _focused_workspace_id
+}
+
+_dev_state() {
+  local workspace_id
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 1
+  _state_load "$workspace_id"
+}
+
+_select_center() {
+  local view="$1" state
+  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  if [[ -z "$state" ]]; then
+    return 0
+  fi
+  _activate_center_view "$view"
+}
+
+_focus_agent() {
+  local state agent_pane view
+  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  [[ -n "$state" ]] || return 0
+  view="$(printf '%s' "$state" | _jq '.active_center_view // "shell"')"
+  _activate_center_view "$view"
+  agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  if ! _pane_exists "$agent_pane"; then
+    state="$(_layout_ensure 1)"
+    agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  else
+    _maybe_start_agent_pane "$agent_pane" 1
+  fi
+  if _pane_exists "$agent_pane"; then
+    _herdr_json agent focus "$agent_pane" >/dev/null 2>&1 \
+      || _herdr_json pane focus "$agent_pane" >/dev/null 2>&1 \
+      || true
+  fi
+}
+
+_refresh_review() {
+  local state review
+  _select_center review
+  state="$(_dev_state)" || return 0
+  review="$(printf '%s' "$state" | _jq '.review_pane_id // empty')"
+  [[ -n "$review" ]] && _pane_exists "$review" || return 0
+  _restart_pane_cmd "$review" "$(_review_launch)"
+}
+
+_toggle_sidebar() {
+  local state sidebar
+  state="$(_dev_state)" || return 0
+  sidebar="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
+  [[ -n "$sidebar" ]] || return 0
+  _activate_center_view "$(printf '%s' "$state" | _jq '.active_center_view // "shell"')"
+  _herdr_json pane zoom "$sidebar" --toggle >/dev/null 2>&1 || true
+}
+
+_sidebar_send_key() {
+  local key="$1" state sidebar
+  state="$(_dev_state)" || return 0
+  sidebar="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
+  [[ -n "$sidebar" ]] || return 0
+  _activate_center_view "$(printf '%s' "$state" | _jq '.active_center_view // "shell"')"
+  _herdr_json pane send-keys "$sidebar" "$key" >/dev/null 2>&1 || true
+}
+
+_select_sidebar_view() {
+  local view="$1" key="$2" workspace_id
+  _sidebar_send_key "$key"
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 0
+  _state_update "$workspace_id" --arg view "$view" '.active_sidebar_view = $view'
+}
+
+_select_files() {
+  _select_sidebar_view files 1
+}
+
+_select_source_control() {
+  _select_sidebar_view source_control 2
+}
+
+_abs_path() {
+  local path="$1"
+  if [[ "$path" != /* ]]; then
+    path="$(cd "$(dirname "$path")" 2>/dev/null && pwd)/$(basename "$path")"
+  fi
+  printf '%s' "$path"
+}
+
+_editor_launch_cmd() {
+  local path="$1"
+  printf '%s %s' "$(_file_editor)" "$(printf '%q' "$path")"
+}
+
+_open_editor() {
+  local path="${1:-${AGENTIC_OPEN_PATH:-}}"
+  local state workspace_id pane tab_id tab_label existing cwd
+  [[ -n "$path" ]] || { echo "agentic-layout: open-editor requires a path" >&2; return 1; }
+  path="$(_abs_path "$path")"
+  [[ -e "$path" ]] || { echo "agentic-layout: open-editor path not found: $path" >&2; return 1; }
+  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  workspace_id="$(printf '%s' "$state" | _jq '.workspace_id')"
+  existing="$(printf '%s' "$state" | jq -r --arg path "$path" '.editors[$path].pane_id // empty')"
+  if [[ -n "$existing" ]] && _pane_exists "$existing"; then
+    tab_id="$(printf '%s' "$state" | jq -r --arg path "$path" '.editors[$path].tab_id // empty')"
+    [[ -n "$tab_id" ]] && _activate_tab "$tab_id"
+    return 0
+  fi
+  cwd="$(dirname "$path")"
+  tab_label="$(basename "$path")"
+  tab_id="$(_herdr_json tab create --workspace "$workspace_id" --label "$tab_label" --cwd "$cwd" --no-focus \
+    | _jq '.result.tab.tab_id')"
+  [[ -n "$tab_id" && "$tab_id" != "null" ]] || {
+    echo "agentic-layout: failed to create editor tab for $path" >&2
+    return 1
+  }
+  pane="$(_pane_on_tab "$workspace_id" "$tab_id")"
+  [[ -n "$pane" ]] || {
+    echo "agentic-layout: editor tab $tab_id has no pane" >&2
+    return 1
+  }
+  _pane_run_login "$pane" "$(_editor_launch_cmd "$path")"
+  _stamp_metadata "$pane" editor "agentic_path=$(basename "$path")"
+  _rename_pane "$pane" editor
+  _state_update "$workspace_id" --arg path "$path" --arg tab "$tab_id" --arg pane "$pane" \
+    '.editors[$path] = {tab_id: $tab, pane_id: $pane}'
+  _activate_tab "$tab_id"
+}
+
+_workspace_is_live() {
+  local workspace_id="$1" found
+  found="$(_herdr_json workspace list | _jq --arg id "$workspace_id" \
+    '.result.workspaces[]? | select(.workspace_id == $id) | .workspace_id' | head -1)" || return 2
+  [[ -n "$found" ]]
+}
+
+_startup_one() {
+  local workspace_id="$1" state reconciled live_status shell_pane
+  state="$(_state_load "$workspace_id" 2>/dev/null || true)"
+  [[ -n "$state" ]] || return 0
+  live_status=0
+  _workspace_is_live "$workspace_id" || live_status=$?
+  if [[ "$live_status" -eq 1 ]]; then
+    _state_delete "$workspace_id"
+    return 0
+  fi
+  [[ "$live_status" -eq 0 ]] || return 0
+  reconciled="$(_reconcile_live_state "$state")"
+  shell_pane="$(printf '%s' "$reconciled" | _jq '.shell_pane_id // empty')"
+  if [[ -n "$shell_pane" ]] && _pane_exists "$shell_pane" && _pane_is_shell "$shell_pane"; then
+    _ensure_pane_process "$shell_pane" "$(_shell_launch)"
+  fi
+  if [[ "$reconciled" != "$state" ]]; then
+    _state_save "$workspace_id" "$reconciled"
+  fi
+}
+
+_on_startup() {
+  local state_dir path workspace_id
+  state_dir="$(_state_dir)"
+  [[ -d "$state_dir" ]] || return 0
+  shopt -s nullglob
+  for path in "$state_dir"/*.json; do
+    [[ -f "$path" ]] || continue
+    workspace_id="${path##*/}"
+    workspace_id="${workspace_id%.json}"
+    _with_layout_lock "$workspace_id" _startup_one "$workspace_id"
+  done
+  shopt -u nullglob
+}
+
+_on_pane_exited() {
+  local pane_id="${1:-}" path workspace_id editor_tab editor_ws
+  [[ -n "$pane_id" ]] || return 0
+  editor_tab=""
+  editor_ws=""
+  shopt -s nullglob
+  for path in "$(_state_dir)"/*.json; do
+    [[ -f "$path" ]] || continue
+    workspace_id="${path##*/}"
+    workspace_id="${workspace_id%.json}"
+    if [[ -z "$editor_tab" ]]; then
+      editor_tab="$(jq -r --arg pane "$pane_id" \
+        '[(.editors // {})[] | select(.pane_id == $pane) | .tab_id][0] // empty' \
+        "$path" 2>/dev/null || true)"
+      if [[ -n "$editor_tab" ]]; then
+        editor_ws="$workspace_id"
+      fi
+    fi
+    _state_update "$workspace_id" --arg pane "$pane_id" '
+      if .agent_pane_id == $pane then .agent_pane_id = "" else . end
+      | if .review_pane_id == $pane then .review_pane_id = "" else . end
+      | if .shell_pane_id == $pane then .shell_pane_id = "" else . end
+      | if .sidebar_pane_id == $pane then .sidebar_pane_id = "" else . end
+      | .editors = ((.editors // {}) | to_entries | map(select(.value.pane_id != $pane)) | from_entries)'
+  done
+  shopt -u nullglob
+  if [[ -n "$editor_tab" && -n "$editor_ws" ]]; then
+    export HERDR_WORKSPACE_ID="$editor_ws"
+    _close_tab_id "$editor_tab"
+  fi
+}
+
+_on_workspace_closed() {
+  local workspace_id="${1:-}"
+  [[ -n "$workspace_id" ]] || return 0
+  _state_delete "$workspace_id"
+}
+
+_on_tab_focused() {
+  local tab_id="${1:-}" workspace_id
+  [[ -n "$tab_id" ]] || return 0
+  workspace_id="$(_event_id workspace_id)"
+  [[ -n "$workspace_id" ]] && export HERDR_WORKSPACE_ID="$workspace_id"
+  _activate_tab "$tab_id" 1
+}
+
+_resolve_context() {
+  local focused
+  if [[ -n "${WT_HERDR_LABEL:-}" && -n "${WT_HERDR_WORKDIR:-}" ]]; then
+    return 0
+  fi
+  if [[ -n "${HERDR_WORKSPACE_ID:-}" ]]; then
+    return 0
+  fi
+  focused="$(_focused_workspace_id)"
+  [[ -n "$focused" ]] && export HERDR_WORKSPACE_ID="$focused"
+}
+
+_prompt_if_requested() {
+  local state="$1"
+  local pane timeout_ms wait_ms interval_ms waited=0 agent status
+  [[ -n "${WT_HERDR_AGENT_PROMPT:-}" ]] || return 0
+  pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  if [[ -z "$pane" ]]; then
+    echo "agentic-layout: no agent_pane_id; cannot submit prompt" >&2
+    return 1
+  fi
+  timeout_ms="${WT_HERDR_AGENT_READY_TIMEOUT_MS:-30000}"
+  wait_ms="${WT_HERDR_AGENT_PROMPT_WAIT_MS:-15000}"
+  interval_ms=100
+  while true; do
+    agent="$(_herdr_json pane get "$pane" | _jq '.result.pane.agent // .result.agent // empty')"
+    if [[ -n "$agent" ]]; then
+      break
+    fi
+    if (( waited >= timeout_ms )); then
+      echo "agentic-layout: agent TUI did not start on pane $pane" >&2
+      return 1
+    fi
+    sleep 0.1
+    waited=$((waited + interval_ms))
+  done
+  status="$(_herdr_json pane get "$pane" | _jq '.result.pane.agent_status // empty')"
+  if [[ "$status" == "working" || "$status" == "blocked" ]]; then
+    echo "agentic-layout: skipping prompt; pane $pane already $status" >&2
+    return 0
+  fi
+  if ! "$HERDR" agent prompt "$pane" "$WT_HERDR_AGENT_PROMPT" \
+    --wait --until working --timeout "$wait_ms" >/dev/null; then
+    echo "agentic-layout: herdr agent prompt failed for pane $pane" >&2
+    return 1
+  fi
+}
+
+main() {
+  local cmd="${1:-}"
+  [[ -n "$cmd" ]] || cmd="${HERDR_PLUGIN_ACTION_ID:-}"
+  [[ -n "$cmd" ]] || cmd="${HERDR_PLUGIN_EVENT:-}"
+
+  case "$cmd" in
+    create)
+      local state
+      _resolve_context
+      state="$(_layout_ensure 1)"
+      if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
+        _select_center shell
+      fi
+      _prompt_if_requested "$state"
+      ;;
+    apply)
+      _resolve_context
+      _layout_ensure 1 >/dev/null
+      if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
+        _select_center shell
+      fi
+      ;;
+    startup) _on_startup ;;
+    focus-agent|focus_agent)
+      _resolve_context
+      _focus_agent
+      ;;
+    select-review|select_review)
+      _resolve_context
+      _select_center review
+      ;;
+    refresh-review|refresh_review)
+      _resolve_context
+      _refresh_review
+      ;;
+    select-shell|select_terminal)
+      _resolve_context
+      _select_center shell
+      ;;
+    toggle-sidebar)
+      _resolve_context
+      _toggle_sidebar
+      ;;
+    select-files)
+      _resolve_context
+      _select_files
+      ;;
+    select-source-control)
+      _resolve_context
+      _select_source_control
+      ;;
+    open-editor)
+      _resolve_context
+      _open_editor "${2:-}"
+      ;;
+    close-tab|close_tab)
+      _resolve_context
+      _close_current_tab
+      ;;
+    close-pane|close_pane)
+      _resolve_context
+      _close_focused_pane
+      ;;
+    select-tab|select_tab)
+      _resolve_context
+      _select_tab_number "${2:-1}"
+      ;;
+    select-tab-*|select_tab_*)
+      _resolve_context
+      _select_tab_number "${cmd##*[-_]}"
+      ;;
+    select-prev-tab|select_prev_tab)
+      _resolve_context
+      _select_tab_relative -1
+      ;;
+    select-next-tab|select_next_tab)
+      _resolve_context
+      _select_tab_relative 1
+      ;;
+    event-pane-exited|event_pane_exited|pane.exited)
+      _on_pane_exited "$(_event_id pane_id)"
+      ;;
+    event-workspace-closed|event_workspace_closed|workspace.closed)
+      _on_workspace_closed "$(_event_id workspace_id)"
+      ;;
+    event-tab-focused|event_tab_focused|tab.focused)
+      _on_tab_focused "$(_event_id tab_id)"
+      ;;
+    *)
+      echo "agentic-layout: unknown command '$cmd'" >&2
+      exit 1
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

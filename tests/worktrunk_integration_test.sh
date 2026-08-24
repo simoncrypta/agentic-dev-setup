@@ -126,6 +126,8 @@ case "${1:-} ${2:-}" in
       esac
     done
     case "$source_name" in
+      simoncrypta/agentic-dev-setup/plugins/agentic-layout) id='agentic-dev.layout' ;;
+      simoncrypta/herdr-agentic-layout) id='agentic-dev.layout' ;;
       simoncrypta/herdr-dev-layout) id='agentic-dev.dev-layout' ;;
       tomasvarga/herdr-pickr) id='pickr' ;;
       devashish2203/herdr-worktrunk) id='worktrunk' ;;
@@ -221,13 +223,33 @@ test_herdr_config_keybindings() {
 
 test_herdr_linux_uses_alt_macos_uses_option() {
   grep -q 'key = "alt+1"' "$ROOT/config/herdr/config.toml" \
-    || fail "linux herdr config missing alt+1"
-  grep -q 'focus_pane_left = "ctrl+alt+h"' "$ROOT/config/herdr/config.toml" \
-    || fail "linux herdr config missing ctrl+alt+h"
+    || fail "linux herdr config missing alt+1 layout tab switch"
+  grep -q 'command = "agentic-dev.layout.select-tab-1"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing layout select-tab-1"
+  grep -q 'command = "agentic-dev.layout.close-tab"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing layout close-tab"
+  grep -q 'key = "prefix+k"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing prefix+k close-tab"
+  grep -q 'close_tab = ""' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config should unbind native close_tab"
+  grep -q 'close_pane = ""' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config should unbind native close_pane"
+  grep -q 'key = "alt+left"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing alt+left previous tab"
+  grep -q 'focus_pane_left = "ctrl+alt+left"' "$ROOT/config/herdr/config.toml" \
+    || fail "linux herdr config missing ctrl+alt+left"
   grep -q 'key = "option+1"' "$ROOT/config/herdr/config.macos.toml" \
-    || fail "macos herdr config missing option+1"
-  grep -q 'focus_pane_left = "ctrl+option+h"' "$ROOT/config/herdr/config.macos.toml" \
-    || fail "macos herdr config missing ctrl+option+h"
+    || fail "macos herdr config missing option+1 layout tab switch"
+  grep -q 'command = "agentic-dev.layout.select-tab-1"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing layout select-tab-1"
+  grep -q 'command = "agentic-dev.layout.close-tab"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing layout close-tab"
+  grep -q 'close_tab = ""' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config should unbind native close_tab"
+  grep -q 'key = "option+left"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing option+left previous tab"
+  grep -q 'focus_pane_left = "ctrl+option+left"' "$ROOT/config/herdr/config.macos.toml" \
+    || fail "macos herdr config missing ctrl+option+left"
   if grep -qE 'key = "alt\+' "$ROOT/config/herdr/config.macos.toml"; then
     fail "macos herdr config still binds alt+ keys"
   fi
@@ -243,9 +265,11 @@ test_deploy_macos_writes_option_herdr_config() {
   detect_os() { printf 'macos'; }
   deploy_configs >/dev/null
   grep -q 'key = "option+1"' "$HERDR_CONFIG_DIR/config.toml" \
-    || fail "macos deploy did not write option+1"
-  grep -q 'focus_pane_left = "ctrl+option+h"' "$HERDR_CONFIG_DIR/config.toml" \
-    || fail "macos deploy did not write ctrl+option+h"
+    || fail "macos deploy did not write option+1 layout tab switch"
+  grep -q 'command = "agentic-dev.layout.select-tab-1"' "$HERDR_CONFIG_DIR/config.toml" \
+    || fail "macos deploy did not write layout select-tab-1"
+  grep -q 'focus_pane_left = "ctrl+option+left"' "$HERDR_CONFIG_DIR/config.toml" \
+    || fail "macos deploy did not write ctrl+option+left"
   assert_worktrunk_keybindings "$HERDR_CONFIG_DIR/config.toml" \
     || fail "macos deploy lost worktrunk keybindings"
   unset -f detect_os

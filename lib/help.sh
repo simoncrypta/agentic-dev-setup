@@ -17,7 +17,7 @@ Post-install CLI (agentic-dev):
   help          This help
   doctor        Check dependencies and integration
   update        Re-sync configs, helper, and skill from the install source
-  reconfigure   Re-prompt agent / review / explorer commands (does not re-sync the helper)
+  reconfigure   Re-prompt agent command (does not re-sync the helper)
   dry-run       Show planned actions without changes
   uninstall     Remove marker block and managed files
 
@@ -30,16 +30,19 @@ Shell commands:
   t             Launch herdr
 
 Layout:
-  Left 50%: agent pane (sticky) — command from ~/.config/agentic-dev/config.toml
-  Tabs: review (tuicr or hunk), explorer (nvim / nano / tode / fresh), terminal (shell)
+  Left 2/6: agent pane (sticky) — command from ~/.config/agentic-dev/config.toml
+  Center 3/6: review (`hunk diff --watch`) or shell tab
+  Right 1/6: files / git pane
 
 Herdr keys (prefix = Ctrl-Space):
   prefix+D           Apply dev layout in current workspace
   prefix+1           Focus agent pane (recreates if crashed)
-  prefix+2/3/4       review / explorer / terminal
-  Alt+1/2/3          Same tabs in a dev workspace; else tab 1/2/3 (Option on macOS)
-  Ctrl+Alt+HJKL      Focus panes left/down/up/right (Ctrl+Option on macOS)
+  prefix+2/3/4       review / shell / files keys
+  Alt+1-9            Focus tab by number (Option+1-9 on macOS)
+  Ctrl+Alt+Arrows    Focus panes left/down/up/right (Ctrl+Option on macOS)
   Alt+Left/Right     Previous/next tab (Option on macOS)
+  prefix+k           Close file tab
+  prefix+x           Close pane (or file tab)
   Alt+Up/Down        Previous/next workspace (Option on macOS)
   prefix+w           Workspace picker
   prefix+shift+k     Close workspace
@@ -59,16 +62,16 @@ Omarchy / Linux:
 Install order:
   mise first (herdr, worktrunk, fzf, jq, lazygit, grok, hunk)
   then omarchy pkg add on Omarchy, then brew / apt / pacman / upstream
-  selected review/explorer tools only (tuicr or hunk; nvim / nano / tode / fresh)
+  selected layout tools: hunk (review) and fresh (editor)
 
 Ubuntu / Debian:
-  Uses apt for git, fzf, jq, neovim, lazygit, curl when mise is unavailable
-  Downloads herdr, worktrunk, and selected review/explorer tools from upstream when needed
+  Uses apt for git, fzf, jq, lazygit, curl when mise is unavailable
+  Downloads herdr, worktrunk, hunk, and fresh from upstream when needed
 
 Config:
-  ~/.config/agentic-dev/config.toml      agent, review, and explorer commands
+  ~/.config/agentic-dev/config.toml      agent, review, and editor commands
   ~/.config/herdr/config.toml            keybindings + plugin actions (Option on macOS)
-  ~/.config/herdr/plugins/dev-layout/    dev layout plugin
+  ~/.config/herdr/plugins/               layout plugin (managed install)
   ~/.config/worktrunk/herdr-layout.sh
   ~/.config/worktrunk/config.toml        worktrunk hooks
   ~/.agents/skills/handoff/              handoff skill (canonical)
@@ -81,11 +84,11 @@ Agent skill (`handoff`):
   Manual: npx skills add simoncrypta/agentic-dev-setup -s handoff -g
 
 Plugin only (see README — review manifest/scripts before install):
-  herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout
-  herdr plugin install simoncrypta/agentic-dev-setup/plugins/dev-layout --ref v0.1.1
-  herdr plugin link /path/to/agentic-dev-setup/plugins/dev-layout
-  herdr plugin config-dir agentic-dev.dev-layout
-  herdr plugin action invoke agentic-dev.dev-layout.create
+  herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout
+  herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.0
+  herdr plugin link /path/to/agentic-dev-setup/plugins/agentic-layout
+  herdr plugin config-dir agentic-dev.layout
+  herdr plugin action invoke agentic-dev.layout.create
 EOF
 }
 
@@ -94,8 +97,8 @@ show_summary() {
   log "agentic-dev-setup installed (v${AGENTIC_DEV_VERSION})"
   log ""
   log "Agent command: $(read_agent_command 2>/dev/null || echo agent)"
-  log "Review command: $(read_layout_review 2>/dev/null || echo tuicr)"
-  log "Explorer command: $(read_layout_editor 2>/dev/null || echo nvim)"
+  log "Review command: $(read_layout_review 2>/dev/null || echo hunk)"
+  log "Editor command: $(read_layout_editor 2>/dev/null || echo fresh)"
   log "Config: ${AGENTIC_DEV_USER_CONFIG}"
   log "Skill: ${AGENTIC_DEV_SKILL_DIR}"
   log ""

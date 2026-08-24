@@ -7,8 +7,8 @@ default_user_config() {
 command = "cursor-agent"
 
 [layout]
-review = "tuicr"
-editor = "nvim"
+review = "hunk"
+editor = "fresh"
 EOF
 }
 
@@ -43,13 +43,19 @@ read_agent_command() {
   fi
 }
 
-read_layout_editor() {
+read_layout_file_editor() {
   ensure_config_reader || true
-  if declare -F agentic_dev_layout_editor >/dev/null 2>&1; then
+  if declare -F agentic_dev_layout_file_editor >/dev/null 2>&1; then
+    agentic_dev_layout_file_editor
+  elif declare -F agentic_dev_layout_editor >/dev/null 2>&1; then
     agentic_dev_layout_editor
   else
-    printf '%s' "${EDITOR:-nvim}"
+    printf '%s' "${EDITOR:-fresh}"
   fi
+}
+
+read_layout_editor() {
+  read_layout_file_editor
 }
 
 read_layout_review() {
@@ -57,14 +63,15 @@ read_layout_review() {
   if declare -F agentic_dev_layout_review >/dev/null 2>&1; then
     agentic_dev_layout_review
   else
-    printf '%s' "tuicr"
+    printf '%s' "hunk"
   fi
 }
 
 RECONFIGURE=0
 
-export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
-export DEV_LAYOUT_PLUGIN_REF="v0.2.8"
+export DEV_LAYOUT_PLUGIN_REPO="simoncrypta/agentic-dev-setup/plugins/agentic-layout"
+export DEV_LAYOUT_PLUGIN_REF="v0.3.0"
+export LEGACY_DEV_LAYOUT_PLUGIN_REPO="simoncrypta/herdr-dev-layout"
 PICKR_PLUGIN_REPO="tomasvarga/herdr-pickr"
 PICKR_PLUGIN_REF="e393ef593e44d2497f43d20aa7b0e4a26ea3d445"
 WORKTRUNK_PLUGIN_REPO="devashish2203/herdr-worktrunk"
@@ -461,11 +468,74 @@ deploy_pickr_config() {
   deploy_install_file "$template_rel" "$dest"
 }
 
+nvim_config_dir() {
+  printf '%s/nvim' "${XDG_CONFIG_HOME:-$HOME/.config}"
+}
+
+fresh_config_path() {
+  printf '%s/fresh/config.json' "${XDG_CONFIG_HOME:-$HOME/.config}"
+}
+
+nvim_is_lazyvim() {
+  local dir
+  dir="$(nvim_config_dir)"
+  [[ -f "$dir/lazyvim.json" ]] && return 0
+  [[ -f "$dir/lua/config/lazy.lua" ]] || return 1
+  grep -q 'LazyVim/LazyVim' "$dir/lua/config/lazy.lua"
+}
+
+deploy_nvim_explorer_defaults() {
+  local dir dest plugins
+  dir="$(nvim_config_dir)"
+  plugins="$dir/lua/plugins"
+  dest="$plugins/agentic-dev-explorer.lua"
+  nvim_is_lazyvim || return 0
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would write $dest (file tree on the right)"
+    return 0
+  fi
+  ensure_dir "$plugins"
+  deploy_install_file "config/nvim/lua/plugins/agentic-dev-explorer.lua" "$dest"
+  info "nvim file tree: neo-tree/snacks on the right (LazyVim)"
+}
+
+deploy_fresh_explorer_defaults() {
+  local dest dir tmp
+  dest="$(fresh_config_path)"
+  dir="$(dirname "$dest")"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would set file_explorer.side=right in $dest"
+    return 0
+  fi
+  ensure_dir "$dir"
+  if [[ ! -f "$dest" ]]; then
+    printf '%s\n' '{ "file_explorer": { "side": "right" } }' >"$dest"
+    info "set Fresh file explorer side to right"
+    return 0
+  fi
+  command -v jq >/dev/null 2>&1 || {
+    warn "jq not available; skip Fresh file explorer side default"
+    return 0
+  }
+  if jq -e '.file_explorer.side != null' "$dest" >/dev/null 2>&1; then
+    info "keeping existing Fresh file explorer side"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  if ! jq '.file_explorer.side = "right"' "$dest" >"$tmp"; then
+    rm -f "$tmp"
+    warn "could not parse $dest; skip Fresh file explorer side default"
+    return 0
+  fi
+  mv "$tmp" "$dest"
+  info "set Fresh file explorer side to right"
+}
+
 write_user_config() {
-  local cmd="$1" review="$2" editor="$3"
+  local cmd="$1"
   ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd review=$review editor=$editor)"
+    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd review=hunk editor=fresh)"
     return 0
   fi
   cat >"$AGENTIC_DEV_USER_CONFIG" <<EOF
@@ -473,8 +543,8 @@ write_user_config() {
 command = "$cmd"
 
 [layout]
-review = "$review"
-editor = "$editor"
+review = "hunk"
+editor = "fresh"
 EOF
   info "saved config to $AGENTIC_DEV_USER_CONFIG"
 }
@@ -482,8 +552,7 @@ EOF
 prompt_user_config() {
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$RECONFIGURE" -ne 1 ]]; then
     info "using existing agent command: $(read_agent_command)"
-    info "using existing review command: $(read_layout_review)"
-    info "using existing explorer command: $(read_layout_editor)"
+    info "review: hunk  editor: fresh"
     return 0
   fi
 
@@ -527,51 +596,7 @@ prompt_user_config() {
     ""|*) cmd="cursor-agent" ;;
   esac
 
-  log ""
-  log "Which command should the review pane auto-start?"
-  log "  1) tuicr"
-  log "  2) hunk"
-  log "  3) custom"
-  log ""
-  printf 'Choice [1-3]: '
-  local review="tuicr"
-  read_tty choice
-  case "$choice" in
-    1|tuicr) review="tuicr" ;;
-    2|hunk) review="hunk" ;;
-    3|custom)
-      printf 'Enter custom command: '
-      read_tty custom_cmd
-      review="${custom_cmd:-tuicr}"
-      ;;
-    ""|*) review="tuicr" ;;
-  esac
-
-  log ""
-  log "Which command should the explorer pane auto-start?"
-  log "  1) nvim"
-  log "  2) nano"
-  log "  3) tode"
-  log "  4) fresh"
-  log "  5) custom"
-  log ""
-  printf 'Choice [1-5]: '
-  local editor="nvim"
-  read_tty choice
-  case "$choice" in
-    1|nvim|neovim) editor="nvim" ;;
-    2|nano) editor="nano" ;;
-    3|tode) editor="tode" ;;
-    4|fresh) editor="fresh" ;;
-    5|custom)
-      printf 'Enter custom command: '
-      read_tty custom_cmd
-      editor="${custom_cmd:-nvim}"
-      ;;
-    ""|*) editor="nvim" ;;
-  esac
-
-  write_user_config "$cmd" "$review" "$editor"
+  write_user_config "$cmd"
 }
 
 prompt_agent_command() {
@@ -668,9 +693,60 @@ record_install_source() {
   info "recorded install source: $src"
 }
 
+migrate_file_editor_config() {
+  local dest="$AGENTIC_DEV_USER_CONFIG" tmp
+  [[ -f "$dest" ]] || return 0
+  grep -qE '^[[:space:]]*editor[[:space:]]*=' "$dest" && return 0
+  grep -qE '^[[:space:]]*file_editor[[:space:]]*=' "$dest" || return 0
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[dry-run] would migrate layout file_editor → editor in $dest"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  awk '
+    BEGIN { in_layout = 0 }
+    /^\[layout\]/ { in_layout = 1 }
+    /^\[/ && $0 != "[layout]" { in_layout = 0 }
+    in_layout && /^[[:space:]]*file_editor[[:space:]]*=/ {
+      sub(/file_editor/, "editor")
+    }
+    { print }
+  ' "$dest" >"$tmp"
+  mv "$tmp" "$dest"
+  info "migrated layout file_editor → editor in $dest"
+}
+
+migrate_legacy_layout_plugin() {
+  local old_id="$LEGACY_LAYOUT_PLUGIN_ID"
+  local status kind repo ref path
+  if ! plugin_inspect "$old_id"; then
+    return 0
+  fi
+  status="$PLUGIN_STATUS"
+  kind="$PLUGIN_SOURCE_KIND"
+  repo="$PLUGIN_SOURCE_REPO"
+  ref="$PLUGIN_SOURCE_REF"
+  path="$PLUGIN_SOURCE_PATH"
+  if [[ "$status" == "missing" ]]; then
+    return 0
+  fi
+  if [[ "$kind" == "github" && "$repo" == "$LEGACY_DEV_LAYOUT_PLUGIN_REPO" ]]; then
+    info "removing legacy layout plugin $old_id ($repo@$ref)"
+    _plugin_remove_registration "$old_id" github || warn "failed to remove $old_id"
+    return 0
+  fi
+  if [[ "$kind" == "local" && "$path" == "$HERDR_DEV_LAYOUT_LEGACY_DIR" ]]; then
+    info "unlinking legacy layout plugin $old_id at $path"
+    _plugin_remove_registration "$old_id" local || warn "failed to unlink $old_id"
+    return 0
+  fi
+  warn "preserving unowned legacy layout plugin $old_id (${PLUGIN_SOURCE_RAW#- })"
+}
+
 deploy_plugin() {
   if command -v herdr >/dev/null 2>&1; then
     require_herdr_min_version || return 1
+    migrate_legacy_layout_plugin
     ensure_managed_github_plugin \
       "$PLUGIN_ID" \
       "$DEV_LAYOUT_PLUGIN_REPO" \
@@ -755,6 +831,7 @@ deploy_configs() {
 
   prompt_user_config
   migrate_cursor_cli_command
+  migrate_file_editor_config
 
   ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
   ensure_dir "$AGENTIC_DEV_SHELL_DIR"

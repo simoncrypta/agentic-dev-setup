@@ -183,6 +183,8 @@ case "${1:-} ${2:-}" in
     [[ "${FAKE_HERDR_FAIL_ALL_INSTALL:-0}" != 1 ]] || exit 42
     [[ "${FAKE_HERDR_MISLEAD_INSTALL:-0}" != 1 ]] || exit 0
     case "$source_name" in
+      simoncrypta/agentic-dev-setup/plugins/agentic-layout) id='agentic-dev.layout' ;;
+      simoncrypta/herdr-agentic-layout) id='agentic-dev.layout' ;;
       simoncrypta/herdr-dev-layout) id='agentic-dev.dev-layout' ;;
       tomasvarga/herdr-pickr) id='pickr' ;;
       devashish2203/herdr-worktrunk) id='worktrunk' ;;
@@ -275,7 +277,7 @@ run_failing_first_proofs() {
   reset_fixture
   deploy_plugin >/dev/null
   deploy_plugin >/dev/null
-  install_count="$(grep -cE '^plugin install simoncrypta/herdr-dev-layout ' "$HERDR_CALL_LOG" || true)"
+  install_count="$(grep -cE '^plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout ' "$HERDR_CALL_LOG" || true)"
   if [[ "$install_count" != 1 ]]; then
     printf 'FAILING-FIRST: repeated deploy expected one GitHub install, got %s\n' "$install_count" >&2
     failures=$((failures + 1))
@@ -297,12 +299,12 @@ run_failing_first_proofs() {
 
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   export FAKE_HERDR_FAIL_INSTALL=1
   if ! declare -F ensure_managed_github_plugin >/dev/null; then
     printf 'FAILING-FIRST: transactional migration helper is absent\n' >&2
     failures=$((failures + 1))
-  elif ensure_managed_github_plugin agentic-dev.dev-layout simoncrypta/herdr-dev-layout v0.2.3 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
+  elif ensure_managed_github_plugin agentic-dev.layout "$DEV_LAYOUT_PLUGIN_REPO" v0.1.0 "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     printf 'FAILING-FIRST: injected migration failure returned success\n' >&2
     failures=$((failures + 1))
   fi
@@ -323,35 +325,35 @@ fi
 test_managed_missing_exact_and_update() {
   local before after
   reset_fixture
-  ensure_managed_github_plugin agentic-dev.dev-layout \
+  ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   assert_eq "github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF" \
-    "$(registry_source agentic-dev.dev-layout)" "missing managed plugin was not installed at the exact pin"
-  assert_log_count '^plugin install simoncrypta/herdr-dev-layout ' 1
+    "$(registry_source agentic-dev.layout)" "missing managed plugin was not installed at the exact pin"
+  assert_log_count '^plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout ' 1
 
   before="$(checksum "$(registry_path)")"
-  ensure_managed_github_plugin agentic-dev.dev-layout \
+  ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   after="$(checksum "$(registry_path)")"
   assert_eq "$before" "$after" "exact managed plugin changed the registry"
-  assert_log_count '^plugin install simoncrypta/herdr-dev-layout ' 1
+  assert_log_count '^plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout ' 1
 
-  seed_github agentic-dev.dev-layout "$DEV_LAYOUT_PLUGIN_REPO" v0.1.0
+  seed_github agentic-dev.layout "$DEV_LAYOUT_PLUGIN_REPO" old-ref
   : >"$HERDR_CALL_LOG"
-  ensure_managed_github_plugin agentic-dev.dev-layout \
+  ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   assert_eq "github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF" \
-    "$(registry_source agentic-dev.dev-layout)" "old managed ref was not updated"
-  assert_log_count '^plugin uninstall agentic-dev.dev-layout$' 1
+    "$(registry_source agentic-dev.layout)" "old managed ref was not updated"
+  assert_log_count '^plugin uninstall agentic-dev.layout$' 1
   printf 'PASS: managed missing/exact/wrong-ref matrix\n'
 }
 
 test_managed_wrong_source_preserved() {
   local before after warning_log="$TMP_DIR/wrong-source.warning"
   reset_fixture
-  seed_github agentic-dev.dev-layout someone/custom-layout user-ref
+  seed_github agentic-dev.layout someone/custom-layout user-ref
   before="$(checksum "$(registry_path)")"
-  ensure_managed_github_plugin agentic-dev.dev-layout \
+  ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" 2>"$warning_log"
   after="$(checksum "$(registry_path)")"
   assert_eq "$before" "$after" "unowned managed-plugin id was replaced"
@@ -362,43 +364,43 @@ test_managed_wrong_source_preserved() {
 }
 
 seed_protected_plugin_data() {
-  mkdir -p "$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.dev-layout" \
-    "$XDG_STATE_HOME/herdr/plugins/agentic-dev.dev-layout"
-  printf 'user-config\n' >"$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.dev-layout/config.toml"
-  printf 'workspace-state\n' >"$XDG_STATE_HOME/herdr/plugins/agentic-dev.dev-layout/state.json"
+  mkdir -p "$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.layout" \
+    "$XDG_STATE_HOME/herdr/plugins/agentic-dev.layout"
+  printf 'user-config\n' >"$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.layout/config.toml"
+  printf 'workspace-state\n' >"$XDG_STATE_HOME/herdr/plugins/agentic-dev.layout/state.json"
 }
 
 assert_protected_plugin_data() {
   assert_eq 'user-config' \
-    "$(tr -d '\n' <"$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.dev-layout/config.toml")" \
+    "$(tr -d '\n' <"$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.layout/config.toml")" \
     "plugin config changed"
   assert_eq 'workspace-state' \
-    "$(tr -d '\n' <"$XDG_STATE_HOME/herdr/plugins/agentic-dev.dev-layout/state.json")" \
+    "$(tr -d '\n' <"$XDG_STATE_HOME/herdr/plugins/agentic-dev.layout/state.json")" \
     "plugin state changed"
 }
 
 test_legacy_migration_and_rollback() {
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   seed_protected_plugin_data
-  ensure_managed_github_plugin agentic-dev.dev-layout \
+  ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   assert_eq "github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF" \
-    "$(registry_source agentic-dev.dev-layout)" "legacy plugin did not migrate"
+    "$(registry_source agentic-dev.layout)" "legacy plugin did not migrate"
   [[ ! -e "$HERDR_DEV_LAYOUT_LEGACY_DIR" ]] || fail "legacy source remained after successful migration"
   assert_protected_plugin_data
 
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   seed_protected_plugin_data
   export FAKE_HERDR_FAIL_INSTALL=1
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"; then
     fail "injected migration failure returned success"
   fi
-  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.dev-layout)" \
+  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.layout)" \
     "failed migration did not restore local registration"
   [[ -f "$HERDR_DEV_LAYOUT_LEGACY_DIR/sentinel" ]] || fail "failed migration did not restore legacy source"
   assert_protected_plugin_data
@@ -407,14 +409,14 @@ test_legacy_migration_and_rollback() {
 
 test_github_update_rollback() {
   reset_fixture
-  seed_github agentic-dev.dev-layout "$DEV_LAYOUT_PLUGIN_REPO" old-ref
+  seed_github agentic-dev.layout "$DEV_LAYOUT_PLUGIN_REPO" old-ref
   export FAKE_HERDR_FAIL_INSTALL=1
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR"; then
     fail "injected managed-ref update failure returned success"
   fi
   assert_eq "github:$DEV_LAYOUT_PLUGIN_REPO@old-ref" \
-    "$(registry_source agentic-dev.dev-layout)" "failed managed-ref update did not roll back"
+    "$(registry_source agentic-dev.layout)" "failed managed-ref update did not roll back"
   printf 'PASS: managed-ref update rollback\n'
 }
 
@@ -450,10 +452,10 @@ test_repeated_external_deploy() {
   after="$(checksum "$(registry_path)")"
   assert_eq "$before" "$after" "second external deploy changed plugin registry"
   assert_log_count '^plugin (link|install|unlink|uninstall) ' 0
-  grep -q "unchanged: managed Herdr plugin agentic-dev.dev-layout ($DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF)" "$second_log" \
+  grep -q "unchanged: managed Herdr plugin agentic-dev.layout ($DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF)" "$second_log" \
     || fail "second deploy did not report exact external pin no-op"
   assert_eq "github:$DEV_LAYOUT_PLUGIN_REPO@$DEV_LAYOUT_PLUGIN_REF" \
-    "$(registry_source agentic-dev.dev-layout)" "deploy_plugin did not pin the external source"
+    "$(registry_source agentic-dev.layout)" "deploy_plugin did not pin the external source"
   printf 'PASS: repeated external install/update has no plugin mutations\n'
 }
 
@@ -503,18 +505,18 @@ test_doctor_source_checks() {
   local output="$TMP_DIR/doctor.output"
   reset_fixture
   mkdir -p "$HERDR_DEV_LAYOUT_LEGACY_DIR"
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   ensure_adopted_github_plugin pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF" >/dev/null
   ensure_adopted_github_plugin worktrunk "$WORKTRUNK_PLUGIN_REPO" "$WORKTRUNK_PLUGIN_REF" >/dev/null
   doctor_plugin >"$output" || fail "doctor rejected exact owned plugin sources"
   grep -q "ok  plugin $PLUGIN_ID \[local:$HERDR_DEV_LAYOUT_LEGACY_DIR\]" "$output" \
     || fail "doctor omitted exact local source"
 
-  export FAKE_HERDR_LIST_OUTPUT='- agentic-dev.dev-layout (fixture) enabled [broken-source]'
+  export FAKE_HERDR_LIST_OUTPUT='- agentic-dev.layout (fixture) enabled [broken-source]'
   if doctor_plugin >"$output"; then
     fail "doctor accepted malformed plugin-list input"
   fi
-  grep -q 'invalid  plugin agentic-dev.dev-layout' "$output" \
+  grep -q 'invalid  plugin agentic-dev.layout' "$output" \
     || fail "doctor did not report malformed plugin-list input"
   printf 'PASS: doctor validates exact source and rejects malformed entries\n'
 }
@@ -522,9 +524,9 @@ test_doctor_source_checks() {
 test_stale_and_misleading_state() {
   local before after warning_log="$TMP_DIR/stale.warning"
   reset_fixture
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   before="$(checksum "$(registry_path)")"
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" 2>"$warning_log"; then
     fail "stale legacy source returned success"
   fi
@@ -553,14 +555,14 @@ test_repeated_interruption_rollback() {
   local attempt
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   export FAKE_HERDR_SIGNAL_INSTALL=1
   for attempt in 1 2; do
-    if ensure_managed_github_plugin agentic-dev.dev-layout \
+    if ensure_managed_github_plugin agentic-dev.layout \
       "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
       fail "interrupted migration attempt $attempt returned success"
     fi
-    assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.dev-layout)" \
+    assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.layout)" \
       "interrupted migration attempt $attempt did not restore registration"
     [[ -f "$HERDR_DEV_LAYOUT_LEGACY_DIR/sentinel" ]] \
       || fail "interrupted migration attempt $attempt did not restore source"
@@ -571,7 +573,7 @@ test_repeated_interruption_rollback() {
 test_uninstall_ownership() {
   local before after config_path
   reset_fixture
-  seed_github agentic-dev.dev-layout someone/custom-layout user-ref
+  seed_github agentic-dev.layout someone/custom-layout user-ref
   config_path="$XDG_CONFIG_HOME/herdr/plugins/config/pickr/config.toml"
   mkdir -p "$(dirname "$config_path")" "$WORKTRUNK_CONFIG_DIR"
   printf 'pickr-user-config\n' >"$config_path"
@@ -586,14 +588,14 @@ test_uninstall_ownership() {
   reset_fixture
   mkdir -p "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   printf 'managed\n' >"$HERDR_DEV_LAYOUT_LEGACY_DIR/sentinel"
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   ensure_adopted_github_plugin pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF" >/dev/null
   ensure_adopted_github_plugin worktrunk "$WORKTRUNK_PLUGIN_REPO" "$WORKTRUNK_PLUGIN_REF" >/dev/null
   : >"$HERDR_CALL_LOG"
   uninstall_agentic_dev >/dev/null 2>&1
   [[ ! -e "$HERDR_DEV_LAYOUT_LEGACY_DIR" ]] || fail "uninstall kept confirmed managed local source"
   assert_eq '2' "$(jq 'length' "$(registry_path)")" "uninstall removed third-party plugins"
-  assert_log_count '^plugin unlink agentic-dev.dev-layout$' 1
+  assert_log_count '^plugin unlink agentic-dev.layout$' 1
   assert_log_count '^plugin (unlink|uninstall) (pickr|worktrunk)$' 0
   printf 'PASS: uninstall removes only confirmed managed dev-layout ownership\n'
 }
@@ -603,7 +605,7 @@ test_target_id_format_drift_is_unknown() {
   reset_fixture
   seed_legacy_dir
   before="$(checksum "$(registry_path)")"
-  export FAKE_HERDR_LIST_OUTPUT="agentic-dev.dev-layout (fixture) enabled [local:$HERDR_DEV_LAYOUT_LEGACY_DIR]"
+  export FAKE_HERDR_LIST_OUTPUT="agentic-dev.layout (fixture) enabled [local:$HERDR_DEV_LAYOUT_LEGACY_DIR]"
   ensure_managed_local_plugin "$PLUGIN_ID" "$HERDR_DEV_LAYOUT_LEGACY_DIR" 2>"$warning_log"
   after="$(checksum "$(registry_path)")"
   assert_eq "$before" "$after" "format-drifted target id was treated as missing and installed"
@@ -616,11 +618,11 @@ test_target_id_format_drift_is_unknown() {
 test_failed_unlink_keeps_managed_source() {
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   export FAKE_HERDR_FAIL_REMOVE=1
   uninstall_agentic_dev >/dev/null 2>&1
   [[ -f "$HERDR_DEV_LAYOUT_LEGACY_DIR/sentinel" ]] || fail "failed unlink still removed managed source directory"
-  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.dev-layout)" \
+  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.layout)" \
     "failed unlink changed managed registration"
   printf 'PASS: failed unlink keeps managed source directory\n'
 }
@@ -628,17 +630,17 @@ test_failed_unlink_keeps_managed_source() {
 test_total_install_outage_restores_snapshot() {
   local before after old_root config_path state_path
   reset_fixture
-  seed_github agentic-dev.dev-layout "$DEV_LAYOUT_PLUGIN_REPO" old-ref
+  seed_github agentic-dev.layout "$DEV_LAYOUT_PLUGIN_REPO" old-ref
   append_github pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF"
-  old_root="$XDG_CONFIG_HOME/herdr/plugins/github/agentic-dev.dev-layout-old-ref"
-  config_path="$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.dev-layout/config.toml"
-  state_path="$XDG_STATE_HOME/herdr/plugins/agentic-dev.dev-layout/state.json"
+  old_root="$XDG_CONFIG_HOME/herdr/plugins/github/agentic-dev.layout-old-ref"
+  config_path="$XDG_CONFIG_HOME/herdr/plugins/config/agentic-dev.layout/config.toml"
+  state_path="$XDG_STATE_HOME/herdr/plugins/agentic-dev.layout/state.json"
   mkdir -p "$(dirname "$config_path")" "$(dirname "$state_path")"
   printf 'config-stable\n' >"$config_path"
   printf 'state-stable\n' >"$state_path"
   before="$(checksum "$(registry_path)")"
   export FAKE_HERDR_FAIL_ALL_INSTALL=1
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "total install outage returned success"
   fi
@@ -655,11 +657,11 @@ test_term_immediately_after_unlink_restores_snapshot() {
   local before after
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   append_github pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF"
   before="$(checksum "$(registry_path)")"
   export FAKE_HERDR_SIGNAL_AFTER_REMOVE=1
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "TERM-interrupted transaction returned success"
   fi
@@ -678,12 +680,12 @@ test_second_term_during_one_rollback_is_deferred() {
   local before after signal_count
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   append_github pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF"
   before="$(checksum "$(registry_path)")"
   export FAKE_HERDR_SIGNAL_AFTER_REMOVE=1
   export AGENTIC_DEV_ON_ROLLBACK_ARMED=send_term_during_rollback
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "double-TERM transaction returned success"
   fi
@@ -699,17 +701,17 @@ test_untrusted_plugin_root_survives_rollback() {
   local must_survive="$TMP_DIR/must-survive-user-directory"
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   mkdir -p "$must_survive"
   printf 'user-owned\n' >"$must_survive/sentinel"
   export FAKE_HERDR_UNTRUSTED_PLUGIN_ROOT="$must_survive"
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "misleading install with untrusted plugin_root returned success"
   fi
   [[ -f "$must_survive/sentinel" ]] \
     || fail "rollback recursively deleted an untrusted registry-provided plugin_root"
-  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.dev-layout)" \
+  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.layout)" \
     "rollback did not restore the original registration after preserving untrusted path"
   printf 'PASS: rollback preserves untrusted registry-provided plugin_root\n'
 }
@@ -721,20 +723,20 @@ test_symlinked_managed_root_preexisting_child_survives() {
   local must_survive="$replacement_root/pre-existing-child"
   reset_fixture
   seed_legacy_dir
-  seed_local agentic-dev.dev-layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
+  seed_local agentic-dev.layout "$HERDR_DEV_LAYOUT_LEGACY_DIR"
   mkdir -p "$original_root" "$must_survive" "$(dirname "$managed_link")"
   printf 'pre-existing-user-data\n' >"$must_survive/sentinel"
   ln -s "$original_root" "$managed_link"
   export FAKE_HERDR_UNTRUSTED_PLUGIN_ROOT="$managed_link/pre-existing-child"
   export FAKE_HERDR_SWAP_MANAGED_ROOT="$managed_link"
   export FAKE_HERDR_SWAP_MANAGED_ROOT_TARGET="$replacement_root"
-  if ensure_managed_github_plugin agentic-dev.dev-layout \
+  if ensure_managed_github_plugin agentic-dev.layout \
     "$DEV_LAYOUT_PLUGIN_REPO" "$DEV_LAYOUT_PLUGIN_REF" "$HERDR_DEV_LAYOUT_LEGACY_DIR" >/dev/null 2>&1; then
     fail "symlinked managed-root misleading install returned success"
   fi
   [[ -f "$must_survive/sentinel" ]] \
     || fail "rollback deleted a pre-existing child after managed-root symlink swap"
-  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.dev-layout)" \
+  assert_eq "local:$HERDR_DEV_LAYOUT_LEGACY_DIR" "$(registry_source agentic-dev.layout)" \
     "rollback did not restore original registration after managed-root symlink swap"
   printf 'PASS: symlinked managed-root pre-existing child survives rollback\n'
 }

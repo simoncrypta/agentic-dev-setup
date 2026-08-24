@@ -4,11 +4,15 @@
 source "${HOME}/.config/worktrunk/herdr-layout.sh"
 
 worktree-dev() {
+  # shellcheck source=/dev/null
+  source "${HOME}/.config/worktrunk/herdr-layout.sh"
   wt_herdr_attach "${PWD}"
 }
 
 unalias d 2>/dev/null || true
 d() {
+  # shellcheck source=/dev/null
+  source "${HOME}/.config/worktrunk/herdr-layout.sh"
   if _wt_in_herdr; then
     wt_herdr_layout_apply "${PWD}"
     return 0

@@ -1,10 +1,8 @@
 # Herdr dev layout helpers for worktrunk and shell integration.
-
-[[ -n "${WT_HERDR_LAYOUT_LOADED:-}" ]] && return 0
-WT_HERDR_LAYOUT_LOADED=1
+# Safe to source repeatedly — worktrunk hooks and shell reload pick up updates.
 
 HERDR="${HERDR_BIN_PATH:-herdr}"
-PLUGIN_ID="agentic-dev.dev-layout"
+PLUGIN_ID="agentic-dev.layout"
 
 _wt_herdr_server_running() {
   "$HERDR" status server 2>/dev/null | grep -q '^status: running'
@@ -220,18 +218,24 @@ _wt_herdr_resolve_workspace() {
 # `herdr plugin action invoke` replaces the plugin env with the focused workspace.
 # Run the plugin script directly so the child id/label/path and prompt survive.
 _wt_herdr_plugin_root() {
-  local registry root
-  if [[ -n "${WT_HERDR_PLUGIN_ROOT:-}" && -f "${WT_HERDR_PLUGIN_ROOT}/dev-layout.sh" ]]; then
-    printf '%s' "$WT_HERDR_PLUGIN_ROOT"
-    return 0
+  local registry root id
+  if [[ -n "${WT_HERDR_PLUGIN_ROOT:-}" ]]; then
+    if [[ -f "${WT_HERDR_PLUGIN_ROOT}/layout.sh" ]]; then
+      printf '%s' "$WT_HERDR_PLUGIN_ROOT"
+      return 0
+    fi
   fi
   registry="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugins.json"
   [[ -f "$registry" ]] || return 1
-  root="$(jq -r --arg id "$PLUGIN_ID" \
+  id="$PLUGIN_ID"
+  root="$(jq -r --arg id "$id" \
     '.[] | select(.plugin_id == $id) | .plugin_root // .source.managed_path // empty' \
     "$registry" | head -1)"
-  [[ -n "$root" && -f "$root/dev-layout.sh" ]] || return 1
-  printf '%s' "$root"
+  if [[ -n "$root" && -f "$root/layout.sh" ]]; then
+    printf '%s' "$root"
+    return 0
+  fi
+  return 1
 }
 
 _wt_herdr_invoke_plugin() {
@@ -251,7 +255,7 @@ _wt_herdr_invoke_plugin() {
     HERDR_WORKSPACE_ID="$workspace_id" \
     HERDR_PLUGIN_ROOT="$root" \
     HERDR_BIN_PATH="${HERDR_BIN_PATH:-$HERDR}" \
-    bash "$root/dev-layout.sh" "$action"
+    bash "$root/layout.sh" "$action"
 }
 
 wt_herdr_layout_create() {

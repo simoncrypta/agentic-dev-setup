@@ -1,0 +1,12 @@
+[agent]
+command = "cursor-agent"
+
+[layout]
+review = "hunk"
+editor = "fresh"
+agent_ratio = 0.333333
+sidebar_ratio = 0.166667
+
+[files]
+show_dotfiles = false
+follow_cwd = true

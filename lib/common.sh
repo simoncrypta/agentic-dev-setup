@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.2.8}"
+AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.3.0}"
 AGENTIC_DEV_MARKER_START="# >>> agentic-dev-setup"
 AGENTIC_DEV_MARKER_END="# <<< agentic-dev-setup"
 
@@ -15,7 +15,8 @@ HERDR_DEV_LAYOUT_LEGACY_DIR="${HERDR_CONFIG_DIR}/plugins/dev-layout"
 WORKTRUNK_CONFIG_DIR="${HOME}/.config/worktrunk"
 FCITX5_CONFIG_DIR="${HOME}/.config/fcitx5"
 LOCAL_BIN="${HOME}/.local/bin"
-PLUGIN_ID="agentic-dev.dev-layout"
+PLUGIN_ID="agentic-dev.layout"
+LEGACY_LAYOUT_PLUGIN_ID="agentic-dev.dev-layout"
 # Canonical skill install per Agent Skills (https://agentskills.io): ~/.agents/skills.
 AGENTIC_DEV_SKILL_ID="handoff"
 AGENTS_SKILLS_DIR="${HOME}/.agents/skills"

@@ -363,68 +363,6 @@ install_worktrunk_binary() {
   rm -rf "$tmp"
 }
 
-install_tuicr_binary() {
-  if dep_present tuicr; then
-    info "present: tuicr"
-    return 0
-  fi
-  if has_brew; then
-    info "installing via brew: agavra/tap/tuicr"
-    if run brew install agavra/tap/tuicr && dep_present tuicr; then
-      return 0
-    fi
-    warn "brew install tuicr failed — trying GitHub release"
-  fi
-  local os arch pattern url dest tmp
-  os="$(detect_os)"
-  arch="$(detect_arch)"
-  case "$os-$arch" in
-    linux-x86_64|linux-amd64)
-      pattern='x86_64-unknown-linux-gnu'
-      ;;
-    linux-aarch64|linux-arm64)
-      pattern='aarch64-unknown-linux-gnu'
-      ;;
-    macos-x86_64|macos-amd64)
-      pattern='x86_64-apple-darwin'
-      ;;
-    macos-arm64|macos-aarch64)
-      pattern='aarch64-apple-darwin'
-      ;;
-    *)
-      warn "cannot auto-install tuicr on $os/$arch — install tuicr manually"
-      return 1
-      ;;
-  esac
-  dep_present curl || maybe_omarchy_pkg_install curl curl \
-    || maybe_apt_install curl curl || true
-  dep_present jq || maybe_mise_install jq jq \
-    || maybe_omarchy_pkg_install jq jq || maybe_apt_install jq jq || true
-  url="$(curl -fsSL https://api.github.com/repos/agavra/tuicr/releases/latest \
-    | jq -r --arg pat "$pattern" '.assets[] | select(.name | contains($pat)) | .browser_download_url' \
-    | head -1)"
-  if [[ -z "$url" || "$url" == "null" ]]; then
-    warn "could not resolve tuicr release URL — install tuicr manually"
-    return 1
-  fi
-  dest="${LOCAL_BIN}/tuicr"
-  ensure_dir "$LOCAL_BIN"
-  info "downloading tuicr from GitHub releases"
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    return 0
-  fi
-  tmp="$(mktemp -d)"
-  curl -fsSL "$url" | tar -xz -C "$tmp"
-  if [[ -f "$tmp/tuicr" ]]; then
-    install -m 0755 "$tmp/tuicr" "$dest"
-  else
-    warn "tuicr archive layout unexpected — install tuicr manually"
-    rm -rf "$tmp"
-    return 1
-  fi
-  rm -rf "$tmp"
-}
-
 install_hunk_binary() {
   if dep_present hunk; then
     info "present: hunk"
@@ -453,27 +391,6 @@ install_hunk_binary() {
     return 0
   fi
   warn "hunk install may have succeeded but hunk is not on PATH"
-  return 1
-}
-
-install_tode_binary() {
-  if dep_present tode; then
-    info "present: tode"
-    return 0
-  fi
-  dep_present curl || maybe_omarchy_pkg_install curl curl \
-    || maybe_apt_install curl curl || maybe_pacman_install curl curl || true
-  info "installing via https://tode.sh/install"
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    return 0
-  fi
-  curl -fsSL https://tode.sh/install | bash
-  ensure_mise_shims
-  hash -r 2>/dev/null || true
-  if dep_present tode; then
-    return 0
-  fi
-  warn "tode install may have succeeded but tode is not on PATH"
   return 1
 }
 
@@ -507,40 +424,8 @@ install_fresh_binary() {
 }
 
 ensure_selected_layout_tools() {
-  local review editor review_bin editor_bin
-  review="$(read_layout_review 2>/dev/null || printf '%s' "tuicr")"
-  editor="$(read_layout_editor 2>/dev/null || printf '%s' "nvim")"
-  review_bin="${review%% *}"
-  editor_bin="${editor%% *}"
-
-  case "$review_bin" in
-    tuicr) install_tuicr_binary || warn "missing tuicr (review tab needs it)" ;;
-    hunk) install_hunk_binary || warn "missing hunk (review tab needs it)" ;;
-    "") ;;
-    *)
-      if dep_present "$review_bin"; then
-        info "present: $review_bin"
-      else
-        warn "missing $review_bin (configured review command)"
-      fi
-      ;;
-  esac
-
-  case "$editor_bin" in
-    nvim|neovim) install_dep nvim neovim || true ;;
-    nano) install_dep nano nano || true ;;
-    tode) install_tode_binary || warn "missing tode (explorer tab needs it)" ;;
-    fresh) install_fresh_binary || warn "missing fresh (explorer tab needs it)" ;;
-    vim) install_dep vim vim || true ;;
-    "") ;;
-    *)
-      if dep_present "$editor_bin"; then
-        info "present: $editor_bin"
-      else
-        warn "missing $editor_bin (configured explorer command)"
-      fi
-      ;;
-  esac
+  install_hunk_binary || warn "missing hunk (review tab needs it)"
+  install_fresh_binary || warn "missing fresh (editor tabs need it)"
 }
 
 install_grok_binary() {
@@ -677,7 +562,6 @@ _doctor_configured_bin() {
 
 doctor_dependencies() {
   local missing=0 found path output rc
-  local review_cmd review_bin editor_cmd editor_bin
   for cmd in herdr git wt fzf jq lazygit; do
     if [[ "$cmd" == herdr ]] && dep_present herdr; then
       path="$(command -v herdr)"
@@ -710,18 +594,8 @@ doctor_dependencies() {
       missing=$((missing + 1))
     fi
   done
-  review_bin="tuicr"
-  editor_bin="nvim"
-  if declare -F read_layout_review >/dev/null; then
-    review_cmd="$(read_layout_review 2>/dev/null || printf '%s' "tuicr")"
-    review_bin="${review_cmd%% *}"
-  fi
-  if declare -F read_layout_editor >/dev/null; then
-    editor_cmd="$(read_layout_editor 2>/dev/null || printf '%s' "nvim")"
-    editor_bin="${editor_cmd%% *}"
-  fi
-  _doctor_configured_bin "$review_bin" review || missing=$((missing + 1))
-  _doctor_configured_bin "$editor_bin" explorer || missing=$((missing + 1))
+  _doctor_configured_bin hunk review || missing=$((missing + 1))
+  _doctor_configured_bin fresh editor || missing=$((missing + 1))
   if declare -F read_agent_command >/dev/null; then
     local agent_cmd agent_bin target status_out status_line
     agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"

@@ -38,20 +38,25 @@ detach = "prefix+shift+q"
 
 # Tabs
 new_tab = "prefix+c"
-previous_tab = ["prefix+p", "option+left"]
-next_tab = ["prefix+n", "option+right"]
-close_tab = "prefix+k"
+previous_tab = "prefix+p"
+next_tab = "prefix+n"
+# Native Option+Left/Right and Option+1..9 paint the destination tab before
+# stickies can dock. Plugin actions assemble the three columns on the hidden tab first.
+# close_tab/close_pane are plugin actions: native close would kill stickies or
+# crash a 3-column file tab.
+switch_tab = ""
+close_tab = ""
 rename_tab = "prefix+shift+t"
 
-# Panes — vim keys (Ctrl+Option)
+# Panes — Ctrl+Option+Arrows. Option+Left/Right stays previous/next tab.
 split_vertical = "prefix+h"
 split_horizontal = "prefix+v"
-close_pane = "prefix+x"
+close_pane = ""
 zoom = "prefix+z"
-focus_pane_left = "ctrl+option+h"
-focus_pane_down = "ctrl+option+j"
-focus_pane_up = "ctrl+option+k"
-focus_pane_right = "ctrl+option+l"
+focus_pane_left = "ctrl+option+left"
+focus_pane_down = "ctrl+option+down"
+focus_pane_up = "ctrl+option+up"
+focus_pane_right = "ctrl+option+right"
 
 # Native Herdr new_worktree (prefix+shift+g) is replaced by worktrunk.open below.
 new_worktree = ""
@@ -62,54 +67,126 @@ type = "shell"
 command = "herdr server reload-config"
 description = "Reload config"
 
-# --- Dev layout (sticky agent) ---
+# --- Agentic layout (three-column workspace) ---
 [[keys.command]]
 key = "prefix+d"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.apply"
-description = "Apply dev layout"
+command = "agentic-dev.layout.apply"
+description = "Apply agentic layout"
 
 [[keys.command]]
 key = "prefix+1"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.focus_agent"
+command = "agentic-dev.layout.focus-agent"
 description = "Focus agent pane"
 
 [[keys.command]]
 key = "prefix+2"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_review"
-description = "Review tab"
+command = "agentic-dev.layout.select-review"
+description = "Review view"
 
 [[keys.command]]
 key = "prefix+3"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_explorer"
-description = "Explorer tab"
+command = "agentic-dev.layout.select-shell"
+description = "Shell view"
 
 [[keys.command]]
-key = "prefix+4"
+key = "prefix+k"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.select_terminal"
-description = "Terminal tab"
+command = "agentic-dev.layout.close-tab"
+description = "Close file tab"
+
+[[keys.command]]
+key = "prefix+x"
+type = "plugin_action"
+command = "agentic-dev.layout.close-pane"
+description = "Close pane"
+
+[[keys.command]]
+key = "option+left"
+type = "plugin_action"
+command = "agentic-dev.layout.select-prev-tab"
+description = "Previous tab"
+
+[[keys.command]]
+key = "option+right"
+type = "plugin_action"
+command = "agentic-dev.layout.select-next-tab"
+description = "Next tab"
 
 [[keys.command]]
 key = "option+1"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.alt_review"
-description = "Review tab, or first tab outside dev workspaces"
+command = "agentic-dev.layout.select-tab-1"
+description = "Focus tab 1"
 
 [[keys.command]]
 key = "option+2"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.alt_explorer"
-description = "Explorer tab, or second tab outside dev workspaces"
+command = "agentic-dev.layout.select-tab-2"
+description = "Focus tab 2"
 
 [[keys.command]]
 key = "option+3"
 type = "plugin_action"
-command = "agentic-dev.dev-layout.alt_terminal"
-description = "Terminal tab, or third tab outside dev workspaces"
+command = "agentic-dev.layout.select-tab-3"
+description = "Focus tab 3"
+
+[[keys.command]]
+key = "option+4"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-4"
+description = "Focus tab 4"
+
+[[keys.command]]
+key = "option+5"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-5"
+description = "Focus tab 5"
+
+[[keys.command]]
+key = "option+6"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-6"
+description = "Focus tab 6"
+
+[[keys.command]]
+key = "option+7"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-7"
+description = "Focus tab 7"
+
+[[keys.command]]
+key = "option+8"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-8"
+description = "Focus tab 8"
+
+[[keys.command]]
+key = "option+9"
+type = "plugin_action"
+command = "agentic-dev.layout.select-tab-9"
+description = "Focus tab 9"
+
+[[keys.command]]
+key = "prefix+b"
+type = "plugin_action"
+command = "agentic-dev.layout.toggle-sidebar"
+description = "Toggle files pane"
+
+[[keys.command]]
+key = "prefix+e"
+type = "plugin_action"
+command = "agentic-dev.layout.select-files"
+description = "Files"
+
+[[keys.command]]
+key = "prefix+g"
+type = "plugin_action"
+command = "agentic-dev.layout.select-source-control"
+description = "Source control"
 
 # --- Git worktrees (herdr-worktrunk plugin) ---
 # Intentionally replaces Herdr's basic new_worktree with the fzf picker.
