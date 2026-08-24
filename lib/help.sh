@@ -31,7 +31,7 @@ Shell commands:
 
 Layout:
   Left 2/6: agent pane (sticky) — command from ~/.config/agentic-dev/config.toml
-  Center 3/6: review (`hunk diff --watch`) or shell tab
+  Center 3/6: review (`hunk diff`; refresh for live watch) or shell tab
   Right 1/6: files / git pane
 
 Herdr keys (prefix = Ctrl-Space):
@@ -97,7 +97,7 @@ show_summary() {
   log "agentic-dev-setup installed (v${AGENTIC_DEV_VERSION})"
   log ""
   log "Agent command: $(read_agent_command 2>/dev/null || echo agent)"
-  log "Review command: $(read_layout_review 2>/dev/null || echo hunk)"
+  log "Review command: $(read_layout_review 2>/dev/null || echo 'hunk diff')"
   log "Editor command: $(read_layout_editor 2>/dev/null || echo fresh)"
   log "Config: ${AGENTIC_DEV_USER_CONFIG}"
   log "Skill: ${AGENTIC_DEV_SKILL_DIR}"

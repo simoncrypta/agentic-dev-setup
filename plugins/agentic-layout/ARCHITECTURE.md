@@ -12,7 +12,7 @@ Two layout tabs per workspace, plus any editor tabs. Agent and sidebar follow th
 
 ```text
 Shell tab (tab 1):    [ agent | shell                    | sidebar ]
-Review tab (tab 2):   [ agent | review (hunk diff --watch) | sidebar ]
+Review tab (tab 2):   [ agent | review (hunk diff) | sidebar ]
 Editor tab (file):    [ agent | editor (fresh <path>)      | sidebar ]
 ```
 

@@ -118,8 +118,10 @@ if _open_editor 2>/dev/null; then
   fail "open-editor without a path should fail"
 fi
 
-[[ "$(_review_launch)" == "hunk diff --watch" ]] \
-  || fail "review should launch hunk diff --watch, got $(_review_launch)"
+[[ "$(_review_launch)" == "hunk diff" ]] \
+  || fail "review should launch hunk diff, got $(_review_launch)"
+[[ "$(_review_refresh_launch)" == "hunk diff --watch" ]] \
+  || fail "refresh-review should launch hunk diff --watch, got $(_review_refresh_launch)"
 
 # Close-tab: dock stickies onto the previous tab, then close. Never pane-close
 # the editor center (that 3-column teardown has crashed Herdr).

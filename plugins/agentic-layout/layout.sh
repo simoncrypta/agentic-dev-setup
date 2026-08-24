@@ -104,8 +104,32 @@ _event_id() {
     2>/dev/null || true
 }
 
+_review_cmd() {
+  if declare -F agentic_dev_layout_review >/dev/null 2>&1; then
+    agentic_dev_layout_review
+  else
+    printf '%s' "hunk diff"
+  fi
+}
+
 _review_launch() {
-  printf '%s' "hunk diff --watch"
+  _review_cmd
+}
+
+_review_refresh_launch() {
+  local cmd
+  cmd="$(_review_cmd)"
+  case "$cmd" in
+    hunk|"hunk diff")
+      printf '%s' "hunk diff --watch"
+      ;;
+    hunk\ diff*)
+      [[ "$cmd" == *"--watch"* ]] && printf '%s' "$cmd" || printf '%s' "$cmd --watch"
+      ;;
+    *)
+      printf '%s' "$cmd"
+      ;;
+  esac
 }
 
 _sidebar_bin() {
@@ -194,7 +218,7 @@ _refresh_review() {
   state="$(_dev_state)" || return 0
   review="$(printf '%s' "$state" | _jq '.review_pane_id // empty')"
   [[ -n "$review" ]] && _pane_exists "$review" || return 0
-  _restart_pane_cmd "$review" "$(_review_launch)"
+  _restart_pane_cmd "$review" "$(_review_refresh_launch)"
 }
 
 _toggle_sidebar() {

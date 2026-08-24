@@ -48,7 +48,9 @@ agentic_dev_layout_file_editor() {
 }
 
 agentic_dev_layout_review() {
-  _agentic_toml_value "review" "hunk"
+  local review="$(_agentic_toml_value "review" "hunk diff")"
+  [[ "$review" == "hunk" ]] && review="hunk diff"
+  printf '%s' "$review"
 }
 
 agentic_dev_layout_agent_ratio() {

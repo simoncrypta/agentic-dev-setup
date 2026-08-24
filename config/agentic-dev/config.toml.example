@@ -3,7 +3,7 @@
 command = "cursor-agent"
 
 [layout]
-# Review pane always runs: hunk diff --watch
-review = "hunk"
+# refresh-review adds --watch
+review = "hunk diff"
 # Sidebar file opens always run: fresh <path>
 editor = "fresh"
