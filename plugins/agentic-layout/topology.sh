@@ -100,8 +100,12 @@ _pane_needs_dock() {
   [[ -n "$pane" ]] && _pane_exists "$pane" && [[ "$(_pane_tab_id "$pane")" != "$tab" ]]
 }
 
-_unix_now() {
-  date +%s
+_stickies_on_tab() {
+  local state="$1" tab_id="$2"
+  local agent sidebar
+  agent="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  sidebar="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
+  ! _pane_needs_dock "$agent" "$tab_id" && ! _pane_needs_dock "$sidebar" "$tab_id"
 }
 
 _focused_tab_id() {
@@ -112,24 +116,9 @@ _focused_tab_id() {
     | head -1
 }
 
-# pane move emits tab.focused on the source tab. Following that event docks
-# stickies back and loops. Ignore echoes for 2s after a dock, and ignore
-# events whose tab is not the one Herdr currently has focused.
-_tab_focus_is_echo() {
-  local state="$1" tab_id="$2" workspace_id="$3"
-  local last now focused
-  last="$(printf '%s' "$state" | _jq '.last_dock_unix // 0')"
-  now="$(_unix_now)"
-  if [[ "$last" =~ ^[0-9]+$ ]] && (( now - last < 2 && last > 0 )); then
-    return 0
-  fi
-  focused="$(_focused_tab_id "$workspace_id")"
-  [[ -n "$focused" && "$focused" != "$tab_id" ]]
-}
-
 _dock_shared_panes() {
   local target_tab="$1" center_pane="$2" state="$3"
-  local agent sidebar json plan role split ratio swap pane_id
+  local agent sidebar json plan role split ratio swap pane_id docked=0
   [[ -n "$target_tab" && -n "$center_pane" ]] || {
     printf '%s' "$state"
     return 0
@@ -141,7 +130,9 @@ _dock_shared_panes() {
     '{state:$state, tab_id:$tab_id, agent_ratio:$agent, sidebar_ratio:$sidebar}' \
     | _layout_core --dock-plan 2>/dev/null || true)"
   [[ -n "$plan" ]] || {
-    _enforce_column_ratios "$center_pane" "$agent" "$sidebar"
+    if _stickies_on_tab "$state" "$target_tab"; then
+      _enforce_column_ratios "$center_pane" "$agent" "$sidebar"
+    fi
     printf '%s' "$state"
     return 0
   }
@@ -162,6 +153,7 @@ _dock_shared_panes() {
       if [[ "$swap" == "1" ]]; then
         _herdr_json pane swap --source-pane "$pane_id" --target-pane "$center_pane" >/dev/null 2>&1 || true
       fi
+      docked=1
       case "$role" in
         agent) agent="$pane_id" ;;
         sidebar) sidebar="$pane_id" ;;
@@ -170,7 +162,9 @@ _dock_shared_panes() {
   done < <(printf '%s' "$plan" | jq -r '.steps[]? | [.pane_role, .split, (.ratio|tostring), (if .swap then "1" else "0" end)] | @tsv')
   state="$(printf '%s' "$state" | jq --arg agent "$agent" --arg sidebar "$sidebar" \
     '.agent_pane_id = $agent | .sidebar_pane_id = $sidebar')"
-  _enforce_column_ratios "$center_pane" "$agent" "$sidebar"
+  if (( docked )) || _stickies_on_tab "$state" "$target_tab"; then
+    _enforce_column_ratios "$center_pane" "$agent" "$sidebar"
+  fi
   printf '%s' "$state"
 }
 
@@ -234,7 +228,7 @@ _enforce_column_ratios() {
 _activate_tab() {
   local tab_id="$1"
   local skip_tab_focus="${2:-0}"
-  local state workspace_id shell_tab review_tab center_pane view now
+  local state workspace_id shell_tab review_tab center_pane view
   [[ -n "$tab_id" ]] || return 0
   workspace_id="${HERDR_WORKSPACE_ID:-${tab_id%%:*}}"
   export HERDR_WORKSPACE_ID="$workspace_id"
@@ -244,7 +238,7 @@ _activate_tab() {
     _layout_lock_release
     return 0
   fi
-  if [[ "$skip_tab_focus" == 1 ]] && _tab_focus_is_echo "$state" "$tab_id" "$workspace_id"; then
+  if [[ "$skip_tab_focus" == 1 ]] && _stickies_on_tab "$state" "$tab_id"; then
     _layout_lock_release
     return 0
   fi
@@ -269,9 +263,7 @@ _activate_tab() {
     view=editor
   fi
   state="$(_dock_shared_panes "$tab_id" "$center_pane" "$state")"
-  now="$(_unix_now)"
-  state="$(printf '%s' "$state" | jq --arg view "$view" --argjson now "$now" \
-    '.active_center_view = $view | .last_dock_unix = $now')"
+  state="$(printf '%s' "$state" | jq --arg view "$view" '.active_center_view = $view')"
   _state_save "$workspace_id" "$state"
   _layout_lock_release
   if [[ "$skip_tab_focus" != 1 ]]; then
@@ -422,12 +414,6 @@ _pane_role() {
   _herdr_json pane get "$pane" | _jq '.result.pane.tokens.agentic_role // empty' 2>/dev/null || true
 }
 
-_pane_has_foreground_agent() {
-  local pane="$1" agent
-  agent="$(_herdr_json pane get "$pane" | _jq '.result.pane.agent // .result.agent // empty' 2>/dev/null || true)"
-  [[ -n "$agent" && "$agent" != "null" ]]
-}
-
 _ensure_center_pane() {
   local workspace_id="$1" workdir="$2" tab_id="$3" field="$4" role="$5" launch="$6" state="$7"
   local pane
@@ -441,13 +427,9 @@ _ensure_center_pane() {
     printf '%s' "$pane"
     return 0
   fi
-  if [[ "$role" == "center_review" ]] && { _pane_has_foreground_agent "$pane" || _pane_is_shell "$pane"; }; then
-    _restart_pane_cmd "$pane" "$launch"
-  elif [[ "$role" == "center_shell" ]] && _pane_is_shell "$pane"; then
-    _ensure_pane_process "$pane" "$launch"
+  if ! _ensure_pane_live "${HERDR_WORKSPACE_ID:-$workspace_id}" "$pane" "$role"; then
+    _refresh_pane_identity "$pane" "$role"
   fi
-  _stamp_metadata "$pane" "$role"
-  _rename_pane "$pane" "$role"
   printf '%s' "$pane"
 }
 
@@ -472,15 +454,14 @@ _ensure_agent_pane() {
 
 _ensure_sidebar_pane() {
   local workdir="$1" state="$2" center_pane="$3"
-  local pane sidebar_bin
+  local pane sidebar_bin workspace_id
+  workspace_id="${HERDR_WORKSPACE_ID:-$(printf '%s' "$state" | _jq '.workspace_id // empty')}"
   pane="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
   sidebar_bin="$(_sidebar_bin)"
   if _pane_exists "$pane"; then
-    if [[ -x "$sidebar_bin" ]] && _pane_is_shell "$pane"; then
-      _pane_run_sidebar "$pane" "$sidebar_bin"
+    if ! _ensure_pane_live "$workspace_id" "$pane" sidebar; then
+      _refresh_pane_identity "$pane" sidebar
     fi
-    _stamp_metadata "$pane" sidebar
-    _rename_pane "$pane" sidebar
     printf '%s' "$pane"
     return 0
   fi
@@ -489,9 +470,9 @@ _ensure_sidebar_pane() {
     _pane_run_sidebar "$pane" "$sidebar_bin"
   else
     _pane_run_login "$pane" "echo 'sidebar binary missing: build with cargo build --release'; exec $(_login_shell) -li"
+    _stamp_metadata "$pane" sidebar
+    _rename_pane "$pane" sidebar
   fi
-  _stamp_metadata "$pane" sidebar
-  _rename_pane "$pane" sidebar
   printf '%s' "$pane"
 }
 

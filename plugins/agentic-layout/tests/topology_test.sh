@@ -136,7 +136,6 @@ export HERDR_PLUGIN_EVENT_JSON='{"event":"tab_focused","data":{"type":"tab_focus
 [[ "$(printf '%s' "$HERDR_PLUGIN_EVENT_JSON" | jq -r '.tab_id // .tab.tab_id // empty')" == "" ]] \
   || fail "legacy top-level tab_id parse should miss nested payloads"
 
-jq 'del(.last_dock_unix)' "$(_state_path w1)" >"$TMP_DIR/w1.json" && mv "$TMP_DIR/w1.json" "$(_state_path w1)"
 : >"$HERDR_CALL_LOG"
 unset HERDR_WORKSPACE_ID
 _on_tab_focused "$(_event_id tab_id)"
@@ -148,8 +147,42 @@ grep -q 'tab focus w1:t1' "$HERDR_CALL_LOG" && fail "tab.focused must not re-iss
 : >"$HERDR_CALL_LOG"
 export HERDR_PLUGIN_EVENT_JSON='{"event":"tab_focused","data":{"type":"tab_focused","tab_id":"w1:t2","workspace_id":"w1"}}'
 _on_tab_focused "$(_event_id tab_id)"
-grep -q 'pane move' "$HERDR_CALL_LOG" && fail "tab.focused must not dock again during the post-dock echo window"
-grep -q 'tab focus' "$HERDR_CALL_LOG" && fail "echo tab.focused must not focus a tab"
+grep -q 'pane move' "$HERDR_CALL_LOG" && fail "tab.focused must not dock when stickies already live on the event tab"
+grep -q 'tab focus' "$HERDR_CALL_LOG" && fail "redundant tab.focused must not focus a tab"
+
+cat >"$TMP_DIR/herdr" <<'FAKE_HERDR'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HERDR_CALL_LOG"
+case "$1" in
+  tab)
+    if [[ "${2:-}" == list ]]; then
+      printf '%s\n' '{"result":{"tabs":[{"tab_id":"w1:t1","label":"Shell","focused":true},{"tab_id":"w1:t2","label":"Review"}]}}'
+    else
+      printf '%s\n' '{"result":{}}'
+    fi
+    ;;
+  pane)
+    if [[ "${2:-}" == get ]]; then
+      id="${3:-}"
+      tab="w1:t1"
+      [[ "$id" == pane-review ]] && tab="w1:t2"
+      printf '{"result":{"pane":{"pane_id":"%s","tab_id":"%s"}}}\n' "$id" "$tab"
+    else
+      printf '%s\n' '{"result":{}}'
+    fi
+    ;;
+  *)
+    printf '%s\n' '{"result":{}}'
+    ;;
+esac
+FAKE_HERDR
+chmod +x "$TMP_DIR/herdr"
+: >"$HERDR_CALL_LOG"
+export HERDR_PLUGIN_EVENT_JSON='{"event":"tab_focused","data":{"type":"tab_focused","tab_id":"w1:t1","workspace_id":"w1"}}'
+_on_tab_focused "$(_event_id tab_id)"
+grep -q 'pane move' "$HERDR_CALL_LOG" && fail "tab.focused must no-op when stickies already live on the tab"
+grep -q 'pane resize' "$HERDR_CALL_LOG" && fail "tab.focused must not enforce ratios when nothing moved"
 
 : >"$HERDR_CALL_LOG"
 _select_tab_relative 1
@@ -209,6 +242,6 @@ grep -q 'pane resize --pane pane-agent --direction right --amount 0.150333' "$HE
 printf 'PASS: tab identity chooses Shell first and does not destroy editors\n'
 printf 'PASS: select-tab docks agent+sidebar onto the hidden tab before focusing it\n'
 printf 'PASS: tab.focused nested payload docks without re-focusing the tab\n'
-printf 'PASS: tab.focused echo after a dock does not ping-pong stickies\n'
+printf 'PASS: tab.focused no-ops when stickies already live on the tab\n'
 printf 'PASS: select-next-tab focuses the neighbor tab\n'
 printf 'PASS: same-tab dock enforces 2/6 3/6 1/6 column ratios\n'

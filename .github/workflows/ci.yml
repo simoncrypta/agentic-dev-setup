@@ -30,6 +30,7 @@ jobs:
           cargo test
           cargo build --release -p herdr-sidebar
           bash tests/state_test.sh
+          bash tests/lifecycle_test.sh
           bash tests/topology_test.sh
           bash tests/open_editor_test.sh
 
