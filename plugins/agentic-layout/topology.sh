@@ -108,6 +108,25 @@ _stickies_on_tab() {
   ! _pane_needs_dock "$agent" "$tab_id" && ! _pane_needs_dock "$sidebar" "$tab_id"
 }
 
+# pane move emits tab.focused on the source tab while a programmatic dock is
+# in flight; ignore those echoes plus redundant same-tab events.
+_tab_focus_should_skip() {
+  local state="$1" tab_id="$2" workspace_id="$3"
+  local focused target
+  if _stickies_on_tab "$state" "$tab_id"; then
+    return 0
+  fi
+  focused="$(_focused_tab_id "$workspace_id")"
+  if [[ -n "$focused" && "$focused" != "$tab_id" ]]; then
+    return 0
+  fi
+  target="$(printf '%s' "$state" | _jq '.dock_target_tab // empty')"
+  if [[ -n "$target" && "$target" != "$tab_id" ]] && _stickies_on_tab "$state" "$target"; then
+    return 0
+  fi
+  return 1
+}
+
 _focused_tab_id() {
   local workspace_id="${1:-}"
   [[ -n "$workspace_id" ]] || return 0
@@ -238,7 +257,7 @@ _activate_tab() {
     _layout_lock_release
     return 0
   fi
-  if [[ "$skip_tab_focus" == 1 ]] && _stickies_on_tab "$state" "$tab_id"; then
+  if [[ "$skip_tab_focus" == 1 ]] && _tab_focus_should_skip "$state" "$tab_id" "$workspace_id"; then
     _layout_lock_release
     return 0
   fi
@@ -262,8 +281,12 @@ _activate_tab() {
     fi
     view=editor
   fi
+  if [[ "$skip_tab_focus" != 1 ]]; then
+    state="$(printf '%s' "$state" | jq --arg tab "$tab_id" '.dock_target_tab = $tab')"
+    _state_save "$workspace_id" "$state"
+  fi
   state="$(_dock_shared_panes "$tab_id" "$center_pane" "$state")"
-  state="$(printf '%s' "$state" | jq --arg view "$view" '.active_center_view = $view')"
+  state="$(printf '%s' "$state" | jq --arg view "$view" '.active_center_view = $view | del(.dock_target_tab)')"
   _state_save "$workspace_id" "$state"
   _layout_lock_release
   if [[ "$skip_tab_focus" != 1 ]]; then
