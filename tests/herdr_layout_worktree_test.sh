@@ -25,14 +25,14 @@ export HERDR_WORKSPACE_ID="w-parent"
 
 PLUGIN_ROOT="$TMP_DIR/plugin"
 mkdir -p "$PLUGIN_ROOT"
-cat >"$PLUGIN_ROOT/dev-layout.sh" <<'EOF'
+cat >"$PLUGIN_ROOT/layout.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'plugin %s workspace=%s label=%s no_attach=%s prompt=%s\n' \
   "${1:-}" "${HERDR_WORKSPACE_ID:-}" "${WT_HERDR_LABEL:-}" \
   "${WT_HERDR_NO_ATTACH:-}" "${WT_HERDR_AGENT_PROMPT:+set}" >>"${HERDR_CALL_LOG}"
 EOF
-chmod +x "$PLUGIN_ROOT/dev-layout.sh"
+chmod +x "$PLUGIN_ROOT/layout.sh"
 export WT_HERDR_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 cat >"$FAKE_BIN/git" <<EOF
@@ -217,13 +217,13 @@ printf 'PASS: linked worktree fails without flat fallback\n'
 
 unset WT_HERDR_PLUGIN_ROOT
 mkdir -p "$XDG_CONFIG_HOME/herdr"
-printf '%s\n' "[{\"plugin_id\":\"agentic-dev.dev-layout\",\"plugin_root\":\"$PLUGIN_ROOT\"}]" \
+printf '%s\n' "[{\"plugin_id\":\"agentic-dev.layout\",\"plugin_root\":\"$PLUGIN_ROOT\"}]" \
   >"$XDG_CONFIG_HOME/herdr/plugins.json"
 got="$(_wt_herdr_plugin_root)"
 [[ "$got" == "$PLUGIN_ROOT" ]] || fail "plugin root from plugins.json: expected $PLUGIN_ROOT got $got"
 printf 'PASS: plugin root resolves from herdr plugins.json\n'
 
-printf '%s\n' "[{\"plugin_id\":\"agentic-dev.dev-layout\",\"source\":{\"managed_path\":\"$PLUGIN_ROOT\"}}]" \
+printf '%s\n' "[{\"plugin_id\":\"agentic-dev.layout\",\"source\":{\"managed_path\":\"$PLUGIN_ROOT\"}}]" \
   >"$XDG_CONFIG_HOME/herdr/plugins.json"
 got="$(_wt_herdr_plugin_root)"
 [[ "$got" == "$PLUGIN_ROOT" ]] || fail "plugin root from managed_path: expected $PLUGIN_ROOT got $got"

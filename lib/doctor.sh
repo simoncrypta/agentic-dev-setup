@@ -76,6 +76,9 @@ doctor_plugin() {
 
   doctor_adopted_plugin pickr "$PICKR_PLUGIN_REPO" "$PICKR_PLUGIN_REF" || missing=$((missing + 1))
   doctor_adopted_plugin worktrunk "$WORKTRUNK_PLUGIN_REPO" "$WORKTRUNK_PLUGIN_REF" || missing=$((missing + 1))
+  if plugin_inspect "$LEGACY_LAYOUT_PLUGIN_ID" && [[ "$PLUGIN_STATUS" == "present" ]]; then
+    log "  warning  legacy layout plugin $LEGACY_LAYOUT_PLUGIN_ID still installed (run update to migrate)"
+  fi
   [[ "$missing" -eq 0 ]]
 }
 

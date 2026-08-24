@@ -9,20 +9,27 @@ agentic_dev_agent_command() {
   printf '%s' "${cmd:-cursor-agent}"
 }
 
-agentic_dev_layout_editor() {
+agentic_dev_layout_file_editor() {
   local config="${HOME}/.config/agentic-dev/config.toml"
-  local editor="${EDITOR:-nvim}"
+  local editor="${EDITOR:-fresh}"
   if [[ -r "$config" ]]; then
     local from_config
     from_config="$(awk -F'"' '/^editor[[:space:]]*=/ { print $2; exit }' "$config")"
+    if [[ -z "$from_config" ]]; then
+      from_config="$(awk -F'"' '/^file_editor[[:space:]]*=/ { print $2; exit }' "$config")"
+    fi
     [[ -n "$from_config" ]] && editor="$from_config"
   fi
   printf '%s' "$editor"
 }
 
+agentic_dev_layout_editor() {
+  agentic_dev_layout_file_editor
+}
+
 agentic_dev_layout_review() {
   local config="${HOME}/.config/agentic-dev/config.toml"
-  local review="tuicr"
+  local review="hunk"
   if [[ -r "$config" ]]; then
     local from_config
     from_config="$(awk -F'"' '/^review[[:space:]]*=/ { print $2; exit }' "$config")"

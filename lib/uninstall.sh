@@ -73,5 +73,9 @@ uninstall_agentic_dev() {
     run rm -f "${FCITX5_CONFIG_DIR}/conf/keyboard.conf"
   fi
 
+  if confirm "Remove nvim file-tree overlay (~/.config/nvim/lua/plugins/agentic-dev-explorer.lua)?"; then
+    run rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nvim/lua/plugins/agentic-dev-explorer.lua"
+  fi
+
   log "uninstall complete"
 }

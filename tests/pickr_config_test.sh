@@ -138,6 +138,8 @@ case "${1:-} ${2:-}" in
       esac
     done
     case "$source_name" in
+      simoncrypta/agentic-dev-setup/plugins/agentic-layout) id='agentic-dev.layout' ;;
+      simoncrypta/herdr-agentic-layout) id='agentic-dev.layout' ;;
       simoncrypta/herdr-dev-layout) id='agentic-dev.dev-layout' ;;
       tomasvarga/herdr-pickr) id='pickr' ;;
       devashish2203/herdr-worktrunk) id='worktrunk' ;;

@@ -59,29 +59,30 @@ SHELL="$saved_shell"
 
 assert_contains "$(default_user_config)" 'command = "cursor-agent"' \
   "default config uses cursor-agent"
-assert_contains "$(default_user_config)" 'review = "tuicr"' \
+assert_contains "$(default_user_config)" 'review = "hunk"' \
   "default config includes review"
-assert_contains "$(default_user_config)" 'editor = "nvim"' \
+assert_contains "$(default_user_config)" 'editor = "fresh"' \
   "default config includes editor"
 
 mkdir -p "$AGENTIC_DEV_CONFIG_DIR"
 cp "$ROOT/config/agentic-dev/config-reader.sh" "$AGENTIC_DEV_CONFIG_DIR/config-reader.sh"
 
 assert_eq "cursor-agent" "$(read_agent_command)" "agent defaults to cursor-agent"
-assert_eq "tuicr" "$(read_layout_review)" "review defaults to tuicr"
-assert_eq "nvim" "$(read_layout_editor)" "editor defaults to nvim"
+assert_eq "hunk" "$(read_layout_review)" "review defaults to hunk"
+assert_eq "fresh" "$(read_layout_file_editor)" "editor defaults to fresh"
 
-write_user_config grok hunk fresh
+write_user_config grok
 assert_eq "grok" "$(read_agent_command)" "write_user_config stores agent"
 assert_eq "hunk" "$(read_layout_review)" "write_user_config stores review"
-assert_eq "fresh" "$(read_layout_editor)" "write_user_config stores explorer"
+assert_eq "fresh" "$(read_layout_file_editor)" "write_user_config stores fresh"
+grep -q 'editor = "fresh"' "$AGENTIC_DEV_USER_CONFIG" \
+  || fail "write_user_config writes editor key"
 
-write_user_config agent tuicr tode
-assert_eq "tode" "$(read_layout_editor)" "write_user_config stores tode"
+write_user_config agent
 migrate_cursor_cli_command
 assert_eq "cursor-agent" "$(read_agent_command)" "migrates agent command to cursor-agent"
 
-# Doctor reports configured tools, not hardcoded tuicr/nvim.
+# Doctor always checks hunk and fresh, not tuicr/nvim.
 case_dir="$TMP_DIR/doctor-hunk-fresh"
 mkdir -p "$case_dir/bin" "$case_dir/home/.config/agentic-dev"
 cat >"$case_dir/home/.config/agentic-dev/config.toml" <<'EOF'
@@ -90,7 +91,7 @@ command = "agent"
 
 [layout]
 review = "hunk"
-editor = "fresh"
+file_editor = "fresh"
 EOF
 cp "$ROOT/config/agentic-dev/config-reader.sh" \
   "$case_dir/home/.config/agentic-dev/config-reader.sh"
@@ -116,6 +117,17 @@ assert_eq "0" "$rc" "doctor exits 0 for hunk+fresh layout"
 assert_contains "$output" "ok  hunk" "doctor accepts configured hunk"
 assert_contains "$output" "ok  fresh" "doctor accepts configured fresh"
 [[ "$output" != *"missing  tuicr"* ]] || fail "doctor should not require tuicr when review is hunk"
-[[ "$output" != *"missing  nvim"* ]] || fail "doctor should not require nvim when explorer is fresh"
+[[ "$output" != *"missing  nvim"* ]] || fail "doctor should not require nvim when file editor is fresh"
 
-printf 'PASS: layout config, write, and doctor follow selected review/explorer tools\n'
+cat >"$AGENTIC_DEV_USER_CONFIG" <<'EOF'
+[layout]
+file_editor = "fresh"
+EOF
+migrate_file_editor_config
+assert_eq "fresh" "$(read_layout_file_editor)" "migrate_file_editor_config keeps the editor command"
+grep -q 'editor = "fresh"' "$AGENTIC_DEV_USER_CONFIG" \
+  || fail "migrate_file_editor_config writes editor"
+grep -q 'file_editor' "$AGENTIC_DEV_USER_CONFIG" \
+  && fail "migrate_file_editor_config should rename file_editor away"
+
+printf 'PASS: layout config, write, migration, and doctor follow hunk and fresh\n'

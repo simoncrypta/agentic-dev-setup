@@ -41,7 +41,7 @@ wt_herdr_layout_create "$LABEL" "$PATH_SIBLING" || {
 `wt_herdr_layout_create` owns:
 
 - `herdr worktree open|create --path` for linked checkouts (group under main)
-- sticky `agentic-dev.dev-layout.create` via the plugin script (not `plugin action invoke`)
+- sticky `agentic-dev.layout.create` via the plugin script (not `plugin action invoke`)
 - forwarding `WT_HERDR_AGENT_PROMPT` so plugin create can `herdr agent prompt` after the TUI is detected
 - keeping whatever workspace the user is already viewing (create does not focus the child, the parent, or the helper's own pane)
 

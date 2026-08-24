@@ -12,9 +12,8 @@ unset WT_HERDR_AGENT_PROMPT
 wt_herdr_layout_create "$S" "$W"
 
 echo "✓ Herdr worktree group / subspace '$S' ready"
-echo "  Layout: agent pane (left, sticky) | tabs: review, explorer, terminal"
-echo "  Child worktrees group under the main repo workspace in Herdr"
-echo "  Switch tabs: Alt+1..3 (review/explorer/terminal), prefix+1 focuses agent, prefix+2..4 same tabs"
+echo "  Layout: agent pane | review/shell center | files pane"
+echo "  Switch: prefix+1 agent, +2 review, +3 shell, +b/+e files, +g git"
 echo "  Attach with: herdr"
 """
 
