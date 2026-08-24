@@ -2,9 +2,10 @@
 
 A ready-made [Herdr](https://herdr.dev) workspace for agentic coding: sticky agent on the left, review/shell in the center, files and git on the right — one layout per worktree, with Worktrunk hooks and a `handoff` skill so agents can spawn sibling worktrees for you.
 
-Works on **Omarchy**, **Ubuntu/Debian**, and **macOS**. Successor to [agentic-tmux-setup](https://github.com/simoncrypta/agentic-tmux-setup).
+Works on **Omarchy**, **Ubuntu/Debian**, and **macOS**.
 
-<img width="3396" height="1390" alt="image" src="https://github.com/user-attachments/assets/eb89337e-262d-4929-bdb8-def28c4a3baf" />
+<img width="2138" height="1386" alt="image" src="https://github.com/user-attachments/assets/52d372ae-a51f-4260-b95f-d9daa3b335c1" />
+
 
 ## Quick install
 
@@ -358,34 +359,6 @@ Installed only if missing (mise first, then Omarchy `pkg add`, Homebrew, apt, pa
 ```
 
 Shell rc gets a fenced marker block in `~/.bashrc` and/or `~/.zshrc`.
-
-## Migrating from agentic-tmux-setup
-
-```bash
-agentic-tmux uninstall
-curl -fsSL https://setup.simoncrypta.dev/install.sh | bash
-```
-
-## Cloudflare hosting
-
-`setup.simoncrypta.dev` is a Worker ([`workers/setup-domain/`](workers/setup-domain/)) with `custom_domain = true`. It redirects `/` to GitHub and proxies other paths to GitHub raw `master` (60s cache), so a push to `master` updates `curl | bash` without a Cloudflare rebuild.
-
-Cloudflare Pages (`agentic-dev-setup.pages.dev`) is a Direct Upload snapshot of `public/` — it is **not** connected to Git. GitHub Actions (`.github/workflows/ci.yml`) runs tests on every push/PR, and on `master` also runs `npm run deploy` when `CLOUDFLARE_API_TOKEN` is set.
-
-| URL | Behavior |
-|-----|----------|
-| `https://setup.simoncrypta.dev/` | 301 → GitHub repo (Worker) |
-| `https://setup.simoncrypta.dev/install.sh` | Installer (Worker → GitHub raw `master`) |
-| `https://agentic-dev-setup.pages.dev/` | 301 → GitHub repo (`public/_redirects`) |
-
-Manual deploy:
-
-```bash
-npm install
-npm run deploy   # Pages assets + setup.simoncrypta.dev Worker
-```
-
-Create a token with **Edit Cloudflare Workers** at [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) and store it as the repo secret `CLOUDFLARE_API_TOKEN`.
 
 ## Development
 
