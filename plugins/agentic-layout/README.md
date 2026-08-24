@@ -54,7 +54,7 @@ sidebar_ratio = 0.166667
 
 ## Sidebar fork
 
-The sidebar TUI is vendored from [alexarthurs/herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar) (MIT). See `THIRD_PARTY_NOTICES.md`.
+Files/git sidebar is our fork of [alexarthurs/herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar) (MIT). See `THIRD_PARTY_NOTICES.md`.
 
 ## License
 
