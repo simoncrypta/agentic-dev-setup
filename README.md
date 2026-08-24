@@ -34,7 +34,7 @@ Already running Herdr and only want the layout plugin? Jump to [Plugin only](#pl
 
 - **Sticky-agent layout**: agent (~⅓) + review/shell center + files/git sidebar — agent stays put while you switch tabs
 - **In-repo layout plugin**: `agentic-dev.layout` (files/git sidebar is our fork of [alexarthurs/herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar))
-- **Review**: [hunk](https://github.com/modem-dev/hunk) (`hunk diff --watch`)
+- **Review**: [hunk](https://github.com/modem-dev/hunk) (`hunk diff`; live watch on refresh)
 - **Editor opens**: [fresh](https://github.com/sinelaw/fresh) from the sidebar tree
 - **Worktrunk plugin**: in-Herdr git worktree pickers (`prefix+shift+g/c/r`)
 - **Shell commands**: `dev`, `wtc`, `wts`, `wtd`, `d`, `t`
@@ -55,7 +55,7 @@ One Herdr workspace per worktree. Switching tabs moves the agent pane with you �
 │                         │                                        │
 │   agent                 │   active tool tab                      │
 │   (cursor / grok / pi / │                                        │
-│    codex / opencode /   │   review    → hunk diff --watch        │
+│    codex / opencode /   │   review    → hunk diff (watch on refresh)   │
 │    claude)              │                                        │
 │                         │   editor    → fresh                    │
 │   sticky left pane      │                                        │
@@ -181,11 +181,11 @@ Optional agent config (`~/.config/agentic-dev/config.toml`):
 command = "cursor-agent"
 
 [layout]
-review = "hunk"
+review = "hunk diff"
 editor = "fresh"
 ```
 
-Without config: agent defaults to `cursor-agent`, review to `hunk diff --watch`, file opens to `fresh`.
+Without config: agent defaults to `cursor-agent`, review to `hunk diff`, file opens to `fresh`. Use `refresh-review` (sidebar `v` or plugin action) for `hunk diff --watch`.
 
 ## Shell commands
 
@@ -218,7 +218,7 @@ Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/th
 |-----|--------|
 | `prefix+d` | Apply / ensure sticky-agent layout |
 | `prefix+1` | Focus agent pane (recreates if crashed) |
-| `prefix+2` | Review tab (`hunk diff --watch`) |
+| `prefix+2` | Review tab (`hunk diff`; refresh for live watch) |
 | `prefix+3` | Shell tab |
 | `prefix+4` | Files pane |
 | `Alt+1` / `Alt+2` / `Alt+3` (Option on macOS) | Same tabs in a **dev** workspace; otherwise focus tab 1/2/3 |
@@ -336,7 +336,7 @@ Installed only if missing (mise first, then Omarchy `pkg add`, Homebrew, apt, pa
 - [herdr](https://herdr.dev) (`mise use -g herdr`, brew, or `curl -fsSL https://herdr.dev/install.sh | sh`)
 - Official [Herdr agent integration](https://herdr.dev/docs/integrations/) for the selected agent
 - git, worktrunk (`wt`), fzf, jq, lazygit
-- [hunk](https://github.com/modem-dev/hunk) (`hunk diff --watch` in the review tab)
+- [hunk](https://github.com/modem-dev/hunk) (`hunk diff` in the review tab; `hunk diff --watch` on refresh)
 - [fresh](https://github.com/sinelaw/fresh) (sidebar file opens)
 - [grok](https://github.com/xai-org) (`mise use -g npm:@xai-official/grok`) when selected as the agent
 - pi (`mise use -g pi`) when selected as the agent

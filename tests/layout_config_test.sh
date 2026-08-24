@@ -59,7 +59,7 @@ SHELL="$saved_shell"
 
 assert_contains "$(default_user_config)" 'command = "cursor-agent"' \
   "default config uses cursor-agent"
-assert_contains "$(default_user_config)" 'review = "hunk"' \
+assert_contains "$(default_user_config)" 'review = "hunk diff"' \
   "default config includes review"
 assert_contains "$(default_user_config)" 'editor = "fresh"' \
   "default config includes editor"
@@ -68,12 +68,12 @@ mkdir -p "$AGENTIC_DEV_CONFIG_DIR"
 cp "$ROOT/config/agentic-dev/config-reader.sh" "$AGENTIC_DEV_CONFIG_DIR/config-reader.sh"
 
 assert_eq "cursor-agent" "$(read_agent_command)" "agent defaults to cursor-agent"
-assert_eq "hunk" "$(read_layout_review)" "review defaults to hunk"
+assert_eq "hunk diff" "$(read_layout_review)" "review defaults to hunk diff"
 assert_eq "fresh" "$(read_layout_file_editor)" "editor defaults to fresh"
 
 write_user_config grok
 assert_eq "grok" "$(read_agent_command)" "write_user_config stores agent"
-assert_eq "hunk" "$(read_layout_review)" "write_user_config stores review"
+assert_eq "hunk diff" "$(read_layout_review)" "write_user_config stores review"
 assert_eq "fresh" "$(read_layout_file_editor)" "write_user_config stores fresh"
 grep -q 'editor = "fresh"' "$AGENTIC_DEV_USER_CONFIG" \
   || fail "write_user_config writes editor key"

@@ -7,7 +7,7 @@ default_user_config() {
 command = "cursor-agent"
 
 [layout]
-review = "hunk"
+review = "hunk diff"
 editor = "fresh"
 EOF
 }
@@ -63,7 +63,7 @@ read_layout_review() {
   if declare -F agentic_dev_layout_review >/dev/null 2>&1; then
     agentic_dev_layout_review
   else
-    printf '%s' "hunk"
+    printf '%s' "hunk diff"
   fi
 }
 
@@ -535,7 +535,7 @@ write_user_config() {
   local cmd="$1"
   ensure_dir "$AGENTIC_DEV_CONFIG_DIR"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd review=hunk editor=fresh)"
+    info "[dry-run] would write $AGENTIC_DEV_USER_CONFIG (agent=$cmd review=hunk diff editor=fresh)"
     return 0
   fi
   cat >"$AGENTIC_DEV_USER_CONFIG" <<EOF
@@ -543,7 +543,7 @@ write_user_config() {
 command = "$cmd"
 
 [layout]
-review = "hunk"
+review = "hunk diff"
 editor = "fresh"
 EOF
   info "saved config to $AGENTIC_DEV_USER_CONFIG"
@@ -552,7 +552,7 @@ EOF
 prompt_user_config() {
   if [[ -f "$AGENTIC_DEV_USER_CONFIG" ]] && [[ "$RECONFIGURE" -ne 1 ]]; then
     info "using existing agent command: $(read_agent_command)"
-    info "review: hunk  editor: fresh"
+    info "review: hunk diff  editor: fresh"
     return 0
   fi
 

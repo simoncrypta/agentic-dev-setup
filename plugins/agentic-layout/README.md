@@ -28,7 +28,7 @@ herdr plugin link ~/path/to/agentic-dev-setup/plugins/agentic-layout
 | `create` | Create layout; honors `WT_HERDR_*` handoff env |
 | `apply` | Idempotently repair plugin-owned panes |
 | `focus-agent` | Focus the persistent agent pane |
-| `select-review` | Show live review pane (no respawn) |
+| `select-review` | Show review pane (no respawn) |
 | `refresh-review` | Focus review and restart `hunk diff --watch` |
 | `select-shell` | Show live shell pane (no respawn) |
 | `toggle-sidebar` | Toggle files pane zoom |
@@ -46,7 +46,7 @@ Reads `~/.config/agentic-dev/config.toml` when present:
 
 ```toml
 [layout]
-review = "hunk"
+review = "hunk diff"
 editor = "fresh"
 agent_ratio = 0.333333
 sidebar_ratio = 0.166667
