@@ -81,6 +81,36 @@ pub fn wrap_hints(
     lines.into_iter().map(Line::from).collect()
 }
 
+pub fn footer_input_line(
+    head: &str,
+    input: &str,
+    hint: &str,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let head = head.to_string();
+    let hint = hint.to_string();
+    let fixed = Span::raw(head.as_str()).width() + 1 + 4;
+    let width = usize::from(width.max(8));
+    let hint_fits = fixed + Span::raw(hint.as_str()).width() + Span::raw(input).width() <= width;
+    let avail = width
+        .saturating_sub(fixed)
+        .saturating_sub(if hint_fits {
+            Span::raw(hint.as_str()).width()
+        } else {
+            0
+        })
+        .max(4);
+    let mut spans = vec![
+        Span::styled(head, Style::default().bold()),
+        Span::raw(input_tail(input, avail)),
+        Span::styled("█", Style::default().dim()),
+    ];
+    if hint_fits {
+        spans.push(Span::styled(hint, Style::default().dim()));
+    }
+    vec![Line::from(spans)]
+}
+
 /// A subtle right-edge scrollbar when the list overflows its viewport.
 /// Purely an indicator: the wheel scrolls, the bar just shows where.
 pub fn draw_scrollbar(frame: &mut Frame, area: Rect, total: usize, viewport: usize, pos: usize) {

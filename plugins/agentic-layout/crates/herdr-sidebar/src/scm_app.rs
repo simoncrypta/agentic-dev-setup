@@ -24,12 +24,13 @@ use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph, Wrap};
 use herdr_sidebar::actions::{copy_to_clipboard, open_external, reveal};
 use herdr_sidebar::git::{FileEntry, Git, Status};
 use herdr_sidebar::icons::{IconTheme, icon};
+use herdr_sidebar::sidebar_root::{self, FolderApply};
 use herdr_sidebar::state::Exit;
 use herdr_sidebar::state::{self as sidebar, View};
 use herdr_sidebar::suggest;
 use herdr_sidebar::ui::{
     DELETED, TitleAction, UNTRACKED, activity_icons, branch_icon, draw_scrollbar, gear_icon, hits,
-    hits_collapse_button, sibling_panes_of, sparkle_icon, status_color, title_action_spans,
+    sibling_panes_of, sparkle_icon, status_color, title_action_spans,
     title_actions_visible, title_actions_width, truncate_to, within, wrap_footer_message,
     wrap_hints,
 };
@@ -602,6 +603,7 @@ pub struct App {
     /// Shared across rebuilds and unified-view switches so a manual folder
     /// choice keeps its precedence until a known neighbour actually moves.
     cwd_follower: std::rc::Rc<std::cell::RefCell<herdr_sidebar::launch::CwdFollower>>,
+    ctx: herdr_sidebar::embed::SidebarContext,
 }
 
 const MY_VIEW: View = View::SourceControl;
@@ -610,6 +612,7 @@ impl App {
     pub fn new(
         cwd: PathBuf,
         cwd_follower: std::rc::Rc<std::cell::RefCell<herdr_sidebar::launch::CwdFollower>>,
+        ctx: herdr_sidebar::embed::SidebarContext,
     ) -> Self {
         let repos: Vec<Repo> = Git::discover_all(&cwd).into_iter().map(Repo::new).collect();
         let discover_err = if repos.is_empty() {
@@ -691,6 +694,7 @@ impl App {
             last_beat: std::time::Instant::now(),
             picking: None,
             cwd_follower,
+            ctx,
         };
         app.apply_identity();
         app.refresh();
@@ -740,21 +744,6 @@ impl App {
         ctl.report_tokens(MY_VIEW, self.merged());
     }
 
-    /// Hide the sidebar: snooze this tab (so the quiet ensure hook doesn't
-    /// immediately re-dock a fresh one) and close our own pane. The herdr
-    /// prefix+b keybinding (→ the toggle action) brings it back.
-    fn hide(&mut self) {
-        let Some(ctl) = &self.pane_ctl else { return };
-        if let Ok(json) = herdr_sidebar::ipc::call_text("pane.list", serde_json::json!({})) {
-            let tab = herdr_sidebar::launch::tab_of(&json, &ctl.pane_id);
-            herdr_sidebar::snooze::set(&herdr_sidebar::snooze::dir(), &tab);
-        }
-        let _ = herdr_sidebar::ipc::call_text(
-            "pane.close",
-            serde_json::json!({ "pane_id": ctl.pane_id }),
-        );
-    }
-
     /// Re-read every repo's git status (this is the change auto-detection —
     /// tick() calls it every [`crate::REFRESH_EVERY`]); keeps the flash so
     /// periodic ticks don't eat notices.
@@ -795,7 +784,7 @@ impl App {
     }
 
     fn follow_sibling_cwd(&mut self) {
-        if !self.sidebar_state.follow_cwd
+        if !self.ctx.follow_cwd(self.sidebar_state.follow_cwd)
             || self.overlay.is_some()
             || self.picking.is_some()
             || self.suggesting.is_some()
@@ -813,13 +802,18 @@ impl App {
             .borrow_mut()
             .next_cwd(&panes, &ctl.pane_id);
         let Some(target) = target else { return };
-        let target = PathBuf::from(target);
-        if target == self.cwd || !target.is_dir() || std::env::set_current_dir(&target).is_err() {
+        let Some(root) = sidebar_root::follow_sibling_target(&target, &self.cwd) else {
             return;
+        };
+        self.reroot_at(root, false);
+    }
+
+    fn reroot_at(&mut self, root: PathBuf, manual: bool) {
+        if manual && self.sidebar_state.follow_cwd {
+            self.cwd_follower.borrow_mut().mark_manual_folder();
         }
-        let root = std::env::current_dir().unwrap_or(target);
         let cwd_follower = std::rc::Rc::clone(&self.cwd_follower);
-        *self = App::new(root, cwd_follower);
+        *self = App::new(root, cwd_follower, self.ctx);
     }
 
     /// Periodic timer tick: retry repo discovery if we started outside one,
@@ -1004,7 +998,7 @@ impl App {
                 }
             }
         }
-        if !herdr_sidebar::embed::is_embedded() {
+        if self.ctx.git_actions() {
             for kind in Drawer::ALL {
                 self.rows.push(Row::DrawerHeader(kind));
                 if self.drawers[kind.index()].expanded {
@@ -1171,17 +1165,16 @@ impl App {
             KeyCode::Char('u') => self.unstage_all(),
             KeyCode::Char('r') => self.refresh(),
             KeyCode::Char('i') => self.set_theme(self.theme.toggled()),
-            KeyCode::Char('A') if !herdr_sidebar::embed::is_embedded() => self.suggest_message(),
+            KeyCode::Char('A') if self.ctx.git_actions() => self.suggest_message(),
             KeyCode::Char('s') => self.open_settings(),
-            KeyCode::Char('S') if !herdr_sidebar::embed::is_embedded() => self.sync_changes(),
-            KeyCode::Char('o') if !herdr_sidebar::embed::is_embedded() => self.open_selected_diff(),
-            KeyCode::Char('v') if herdr_sidebar::embed::is_embedded() => {
+            KeyCode::Char('S') if self.ctx.git_actions() => self.sync_changes(),
+            KeyCode::Char('o') if self.ctx.git_actions() => self.open_selected_diff(),
+            KeyCode::Char('v') if self.ctx.uses_external_editor() => {
                 if let Err(e) = herdr_sidebar::embed::refresh_review() {
                     self.flash = Some((e, true));
                 }
             }
             KeyCode::Char('m') => self.open_menu_for_selection(),
-            KeyCode::Char('b') => self.hide(),
             KeyCode::Char('1') => return self.switch_to(View::Explorer),
             KeyCode::Char('2') => return self.switch_to(View::SourceControl),
             _ => {}
@@ -1219,10 +1212,6 @@ impl App {
 
     fn left_click(&mut self, mouse: MouseEvent) -> Option<Exit> {
         self.flash = None;
-        if hits_collapse_button(mouse.column, mouse.row, self.last_width, self.last_height) {
-            self.hide();
-            return None;
-        }
         let (x, y) = (mouse.column, mouse.row);
         let z = self.zones;
         if self.merged() && y == z.activity_row {
@@ -1884,15 +1873,11 @@ impl App {
         match rx.try_recv() {
             Ok(Some(path)) => {
                 self.picking = None;
-                if std::env::set_current_dir(&path).is_ok() {
-                    let root = std::env::current_dir().unwrap_or(path);
-                    if self.sidebar_state.follow_cwd {
-                        self.cwd_follower.borrow_mut().mark_manual_folder();
-                    }
-                    let cwd_follower = std::rc::Rc::clone(&self.cwd_follower);
-                    *self = App::new(root, cwd_follower);
-                } else {
-                    self.flash = Some((format!("cannot open {}", path.display()), true));
+                let path_str = path.as_os_str().to_str().unwrap_or("");
+                match sidebar_root::apply_folder(path_str, &self.cwd, true) {
+                    FolderApply::Applied(root) => self.reroot_at(root, true),
+                    FolderApply::Rejected { message: Some(msg) } => self.flash = Some((msg, true)),
+                    FolderApply::Rejected { message: None } => {}
                 }
             }
             Ok(None) => {
@@ -2736,10 +2721,10 @@ impl App {
             2 + self.single_message_rows(area.width) as u16
         };
         let button_height = if multi { 0 } else { 3 };
-        let sync_height = if herdr_sidebar::embed::is_embedded() {
-            0
-        } else {
+        let sync_height = if self.ctx.git_actions() {
             u16::from(!multi && self.sync_label().is_some())
+        } else {
+            0
         };
         let footer_lines = self.footer_lines(area.width);
         // A breathing row above and below the icons keeps the activity bar
@@ -2772,35 +2757,7 @@ impl App {
             self.zones.sync = Rect::default();
         }
         self.draw_list(frame, list);
-        let footer_empty = footer_lines.is_empty();
         frame.render_widget(Paragraph::new(footer_lines), footer);
-        // Collapse button at the bottom-right of the last footer line,
-        // mirroring the explorer (and herdr's own sidebar).
-        let last_line = Rect::new(
-            footer.x,
-            footer.y + footer.height.saturating_sub(1),
-            footer.width,
-            1,
-        );
-        if footer_empty {
-            frame.render_widget(
-                Paragraph::new(Span::styled(
-                    " m / ctrl+rclick: menu",
-                    Style::default().dim().italic(),
-                )),
-                last_line,
-            );
-        }
-        let [_, footer_button] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(3)]).areas(last_line);
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                "«",
-                Style::default().bold().fg(Color::LightBlue),
-            ))
-            .centered(),
-            footer_button,
-        );
 
         match self.overlay {
             Some(Overlay::Menu { .. }) => self.draw_menu(frame),
@@ -3242,7 +3199,7 @@ impl App {
                 .collect();
         }
         if !self.show_hotkeys() {
-            return Vec::new();
+            return wrap_hints(&[("m", "menu")], width, 0);
         }
         wrap_hints(&self.hints(), width, 3)
     }
@@ -3257,7 +3214,6 @@ impl App {
             ("A", "suggest"),
             ("o", "diff"),
             ("m", "menu"),
-            ("b", "hide"),
             ("S", "sync"),
             ("s", "settings"),
             ("r", "refresh"),

@@ -203,10 +203,10 @@ pub fn follow_cwd_setting_value(enabled: bool) -> String {
 /// they split (see [`spawn_env`]); when it didn't reach us, fall back to
 /// the conventional location herdr resolves it to.
 pub fn state_path() -> Option<PathBuf> {
-    Some(state_dir()?.join("state.json"))
+    Some(plugin_state_dir()?.join("state.json"))
 }
 
-fn state_dir() -> Option<PathBuf> {
+pub fn plugin_state_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("HERDR_PLUGIN_STATE_DIR")
         && !dir.is_empty()
     {
@@ -226,13 +226,31 @@ fn state_dir() -> Option<PathBuf> {
     )
 }
 
+pub fn workspace_state_path(workspace_id: &str) -> Option<PathBuf> {
+    if workspace_id.is_empty() {
+        return None;
+    }
+    Some(plugin_state_dir()?.join(format!("{workspace_id}.json")))
+}
+
+pub fn layout_workdir() -> Option<PathBuf> {
+    let ws = std::env::var("HERDR_WORKSPACE_ID")
+        .ok()
+        .filter(|id| !id.is_empty())?;
+    let path = workspace_state_path(&ws)?;
+    let json = std::fs::read_to_string(&path).ok()?;
+    let state = crate::herdr_json::LayoutState::ingest_json(&ws, &json)?;
+    let workdir = PathBuf::from(state.workdir);
+    workdir.is_dir().then_some(workdir)
+}
+
 /// Env for panes WE spawn. Panes don't inherit the hook/action env herdr
 /// injects, so forward the state dir and prepend the directory containing
 /// our executable to PATH. Launchers can then type the same bare command in
 /// every configured shell without quoting an absolute path.
 pub fn spawn_env() -> serde_json::Value {
     let mut env = serde_json::Map::new();
-    if let Some(dir) = state_dir() {
+    if let Some(dir) = plugin_state_dir() {
         env.insert(
             "HERDR_PLUGIN_STATE_DIR".into(),
             serde_json::Value::String(dir.display().to_string()),
@@ -392,7 +410,7 @@ pub struct TreeState {
 }
 
 fn tree_path() -> Option<PathBuf> {
-    Some(state_dir()?.join("tree.json"))
+    Some(plugin_state_dir()?.join("tree.json"))
 }
 
 /// The whole file: tree state per workspace ROOT. One file serves every
@@ -496,7 +514,7 @@ pub struct ScmState {
 }
 
 fn scm_path() -> Option<PathBuf> {
-    Some(state_dir()?.join("scm.json"))
+    Some(plugin_state_dir()?.join("scm.json"))
 }
 
 /// Stable JSON key for a filesystem path. Git commonly reports `/` on
@@ -608,7 +626,7 @@ pub fn save_scm_state(cwd: &Path, state: &ScmState) {
 type RootsFile = serde_json::Map<String, serde_json::Value>;
 
 fn roots_path() -> Option<PathBuf> {
-    Some(state_dir()?.join("roots.json"))
+    Some(plugin_state_dir()?.join("roots.json"))
 }
 
 /// Forgiving decode: anything missing or garbled yields an empty map, so a
@@ -726,6 +744,30 @@ mod tests {
     /// recreating `tremor` moved it from `wG` to `wH` inside one session.
     /// Keying a remembered root on the id would hand a future space the root
     /// picked for an unrelated one, so the label is the key.
+    #[test]
+    fn layout_workdir_reads_workspace_state() {
+        let tmp = std::env::temp_dir().join(format!("layout-workdir-{}", std::process::id()));
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let state_dir = tmp.join("state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::write(
+            state_dir.join("w1.json"),
+            format!(r#"{{"workdir":"{}"}}"#, repo.display()),
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("HERDR_WORKSPACE_ID", "w1");
+            std::env::set_var("HERDR_PLUGIN_STATE_DIR", &state_dir);
+        }
+        assert_eq!(layout_workdir().as_deref(), Some(repo.as_path()));
+        unsafe {
+            std::env::remove_var("HERDR_WORKSPACE_ID");
+            std::env::remove_var("HERDR_PLUGIN_STATE_DIR");
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn remembered_roots_are_keyed_by_workspace_label() {
         let file = decode_roots_file(r#"{"tremor":"/repo/tremor","faultline":"/repo/faultline"}"#);

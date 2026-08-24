@@ -3,6 +3,11 @@
 //! explicit refresh, so redraws never touch the disk.
 
 use std::collections::{BTreeSet, HashMap};
+
+use nucleo_matcher::{
+    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
+    Config, Matcher,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +32,8 @@ pub struct Tree {
     expanded: BTreeSet<PathBuf>,
     cache: HashMap<PathBuf, Vec<Entry>>,
     pub show_hidden: bool,
+    search_index: Option<Vec<(String, Row)>>,
+    search_index_hidden: bool,
 }
 
 impl Tree {
@@ -36,6 +43,8 @@ impl Tree {
             expanded: BTreeSet::new(),
             cache: HashMap::new(),
             show_hidden: true,
+            search_index: None,
+            search_index_hidden: true,
         }
     }
 
@@ -56,6 +65,7 @@ impl Tree {
     /// Drop all cached listings; the next `rows()` re-reads the disk.
     pub fn refresh(&mut self) {
         self.cache.clear();
+        self.search_index = None;
     }
 
     pub fn is_expanded(&self, path: &Path) -> bool {
@@ -76,6 +86,7 @@ impl Tree {
             .filter(|p| p.starts_with(&self.root))
             .collect();
         self.cache.clear();
+        self.search_index = None;
     }
 
     pub fn expand(&mut self, path: &Path) {
@@ -141,6 +152,84 @@ impl Tree {
             });
             if expanded {
                 self.walk(&path, depth + 1, out);
+            }
+        }
+    }
+
+    pub fn search(&mut self, query: &str, limit: usize) -> Vec<Row> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        self.ensure_search_index();
+        let candidates = self.search_index.as_ref().unwrap();
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        let haystacks: Vec<&str> = candidates.iter().map(|(rel, _)| rel.as_str()).collect();
+        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+        let pattern = Pattern::new(
+            query,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+            AtomKind::Fuzzy,
+        );
+        let matches = pattern.match_list(haystacks, &mut matcher);
+        let by_name: HashMap<&str, &Row> = candidates
+            .iter()
+            .map(|(rel, row)| (rel.as_str(), row))
+            .collect();
+        let mut out = Vec::with_capacity(limit.min(matches.len()));
+        for (matched, _score) in matches {
+            if out.len() >= limit {
+                break;
+            }
+            if let Some(row) = by_name.get(matched) {
+                out.push((*row).clone());
+            }
+        }
+        out
+    }
+
+    fn ensure_search_index(&mut self) {
+        if self
+            .search_index
+            .as_ref()
+            .is_some_and(|_| self.search_index_hidden == self.show_hidden)
+        {
+            return;
+        }
+        let mut paths = Vec::new();
+        let root = self.root.clone();
+        self.search_collect(&root, &root, &mut paths);
+        self.search_index_hidden = self.show_hidden;
+        self.search_index = Some(paths);
+    }
+
+    fn search_collect(&mut self, dir: &Path, root: &Path, out: &mut Vec<(String, Row)>) {
+        let show_hidden = self.show_hidden;
+        for entry in self.children(dir) {
+            if !visible(&entry.name, show_hidden) {
+                continue;
+            }
+            let path = dir.join(&entry.name);
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((
+                rel.clone(),
+                Row {
+                    path: path.clone(),
+                    name: rel,
+                    is_dir: entry.is_dir,
+                    depth: 0,
+                    expanded: false,
+                },
+            ));
+            if entry.is_dir {
+                self.search_collect(&path, root, out);
             }
         }
     }
@@ -296,6 +385,28 @@ mod tests {
     fn unreadable_or_missing_dir_is_empty() {
         let mut tree = Tree::new(std::env::temp_dir().join("aa-filetree-does-not-exist"));
         assert!(tree.rows().is_empty());
+    }
+
+    #[test]
+    fn search_fuzzy_matches_paths_by_score() {
+        let tmp = TempDir::new("search");
+        tmp.mkdir("src/lib");
+        tmp.touch("src/main.rs");
+        tmp.touch("src/lib/util.rs");
+        tmp.touch("README.md");
+        let mut tree = Tree::new(tmp.0.clone());
+        let hits: Vec<_> = tree
+            .search("rs", 50)
+            .into_iter()
+            .map(|r| r.name)
+            .collect();
+        assert!(hits.contains(&"src/main.rs".into()));
+        assert!(hits.contains(&"src/lib/util.rs".into()));
+        assert!(!hits.contains(&"README.md".into()));
+        let top = tree.search("mnrs", 50).first().map(|r| r.name.clone());
+        assert_eq!(top.as_deref(), Some("src/main.rs"));
+        assert!(tree.search("", 50).is_empty());
+        assert!(tree.search("missing-xyz", 50).is_empty());
     }
 
     #[test]

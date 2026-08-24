@@ -2,29 +2,36 @@
 //! nested indentation, per-file-type icons, and a VS Code-like hide/show command
 //! (`b`) when the user wants the columns back.
 
+#[path = "explorer_footer.rs"]
+mod explorer_footer;
+#[path = "explorer_search.rs"]
+mod explorer_search;
+
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, List, ListItem, Paragraph};
 
 use herdr_sidebar::actions::{self, MenuAction, MenuEntry};
+use herdr_sidebar::embed::SidebarContext;
+use herdr_sidebar::file_search::FileSearch;
 use herdr_sidebar::git::Git;
 use herdr_sidebar::gitdeco::{Decorations, RepoStatus};
 use herdr_sidebar::icons::{IconTheme, icon};
 use herdr_sidebar::ipc;
-use herdr_sidebar::state::{self as sidebar, View};
+use herdr_sidebar::state::{self as sidebar, Exit, View};
 use herdr_sidebar::tree::{Row, Tree};
 use herdr_sidebar::ui::{
-    TitleAction, activity_icons, draw_scrollbar, gear_icon, hits, hits_collapse_button, input_tail,
+    TitleAction, activity_icons, draw_scrollbar, gear_icon, hits,
     sibling_panes_of, status_color, title_action_spans, title_actions_visible, title_actions_width,
-    truncate_to, wrap_footer_message, wrap_hints,
+    truncate_to, wrap_hints,
 };
 
-use herdr_sidebar::state::Exit;
+use herdr_sidebar::sidebar_root;
 
 const MY_VIEW: View = View::Explorer;
 
@@ -218,8 +225,10 @@ pub struct App {
     hovered: Option<usize>,
     body: BodyGeom,
     overlay: Option<Overlay>,
+    search: FileSearch,
     /// Transient status/error line shown in the footer until the next action.
     notice: Option<String>,
+    ctx: SidebarContext,
     // Merged-sidebar state.
     sidebar_state: sidebar::State,
     other_exe: Option<std::path::PathBuf>,
@@ -288,6 +297,7 @@ impl App {
     pub fn new(
         root: PathBuf,
         cwd_follower: std::rc::Rc<std::cell::RefCell<herdr_sidebar::launch::CwdFollower>>,
+        ctx: SidebarContext,
     ) -> Self {
         let mut tree = Tree::new(root);
         // Mirror the tree the user was already looking at: a sidebar docked
@@ -331,7 +341,9 @@ impl App {
             hovered: None,
             body: BodyGeom::default(),
             overlay: None,
+            search: FileSearch::default(),
             notice: None,
+            ctx,
             sidebar_state,
             other_exe,
             activity: ActivityZones::default(),
@@ -377,6 +389,17 @@ impl App {
     fn sync_shared_settings(&mut self) {
         let shared = sidebar::load_state();
         self.sidebar_state.dock_right = shared.dock_right;
+        self.sidebar_state.show_hotkeys = shared.show_hotkeys;
+        if shared.icons != self.sidebar_state.icons {
+            self.sidebar_state.icons = shared.icons;
+            self.theme = IconTheme::resolve(
+                std::env::var("HERDR_SIDEBAR_ICONS")
+                    .or_else(|_| std::env::var("HERDR_AA_FILETREE_ICONS"))
+                    .ok()
+                    .as_deref(),
+                shared.icons,
+            );
+        }
         if shared.sidebar_width != self.sidebar_state.sidebar_width {
             self.sidebar_state.sidebar_width = shared.sidebar_width;
             if let Some(ctl) = &self.pane_ctl {
@@ -493,11 +516,34 @@ impl App {
         if let Some(ctl) = &self.pane_ctl {
             ctl.report_tokens(MY_VIEW, self.merged());
         }
+        self.ensure_embedded_root();
         self.follow_sibling_cwd();
     }
 
+    fn ensure_embedded_root(&mut self) {
+        if !self.ctx.embedded() {
+            return;
+        }
+        let Some(workdir) = herdr_sidebar::state::layout_workdir() else {
+            return;
+        };
+        if self
+            .notice
+            .as_deref()
+            .is_some_and(|n| n.contains("-dev.layout"))
+        {
+            self.notice = None;
+        }
+        if workdir != self.tree.root_path() {
+            self.reroot_at(workdir, false);
+        }
+    }
+
     fn follow_sibling_cwd(&mut self) {
-        if !self.sidebar_state.follow_cwd || self.overlay.is_some() || self.picking.is_some() {
+        if !self.ctx.follow_cwd(self.sidebar_state.follow_cwd)
+            || self.overlay.is_some()
+            || self.picking.is_some()
+        {
             return;
         }
         let Some(ctl) = &self.pane_ctl else { return };
@@ -508,10 +554,12 @@ impl App {
             .cwd_follower
             .borrow_mut()
             .next_cwd(&panes, &ctl.pane_id);
-        if let Some(target) = target
-            && Path::new(&target) != self.tree.root_path()
-        {
-            self.change_folder_impl(&target, false);
+        if let Some(target) = target {
+            if let Some(root) =
+                sidebar_root::follow_sibling_target(&target, self.tree.root_path().as_path())
+            {
+                self.reroot_at(root, false);
+            }
         }
     }
 
@@ -540,7 +588,7 @@ impl App {
     /// configured editor (`fresh path`). Standalone sidebar
     /// still uses the in-process preview pane beside the tree.
     fn open_preview(&mut self, path: &Path) {
-        if herdr_sidebar::embed::is_embedded() {
+        if self.ctx.uses_external_editor() {
             match herdr_sidebar::embed::open_file_editor(path) {
                 Ok(()) => self.notice = None,
                 Err(e) => self.notice = Some(e),
@@ -564,21 +612,6 @@ impl App {
             Ok(target) => self.last_preview = Some((doc_key, target)),
             Err(e) => self.notice = Some(e),
         }
-    }
-
-    /// Hide the sidebar: snooze this tab (so the quiet ensure hook doesn't
-    /// immediately re-dock a fresh one) and close our own pane. The herdr
-    /// prefix+b keybinding (→ the toggle action) brings it back.
-    fn hide(&mut self) {
-        let Some(ctl) = &self.pane_ctl else { return };
-        if let Ok(json) = herdr_sidebar::ipc::call_text("pane.list", serde_json::json!({})) {
-            let tab = herdr_sidebar::launch::tab_of(&json, &ctl.pane_id);
-            herdr_sidebar::snooze::set(&herdr_sidebar::snooze::dir(), &tab);
-        }
-        let _ = herdr_sidebar::ipc::call_text(
-            "pane.close",
-            serde_json::json!({ "pane_id": ctl.pane_id }),
-        );
     }
 
     // ---- Unified-sidebar operations ----
@@ -681,6 +714,9 @@ impl App {
             return None;
         }
         self.notice = None;
+        if self.search.active() {
+            return explorer_search::on_search_key(self, key);
+        }
         if self.overlay.is_some() {
             self.overlay_key(key);
             return None;
@@ -706,11 +742,14 @@ impl App {
                 self.rebuild();
             }
             KeyCode::Char('i') => self.set_theme(self.theme.toggled()),
-            KeyCode::Char('b') => self.hide(),
             KeyCode::Char('c') => self.change_folder_dialog(),
             KeyCode::Char('m') => self.open_menu_for_selection(),
             KeyCode::Char('s') => self.open_settings(),
-            KeyCode::Char('v') if herdr_sidebar::embed::is_embedded() => {
+            KeyCode::Char('/') => {
+                self.search.start();
+                explorer_search::apply_search(self);
+            }
+            KeyCode::Char('v') if self.ctx.uses_external_editor() => {
                 if let Err(e) = herdr_sidebar::embed::refresh_review() {
                     self.notice = Some(e);
                 }
@@ -765,11 +804,6 @@ impl App {
                     self.title_action(action);
                     return None;
                 }
-                if hits_collapse_button(mouse.column, mouse.row, self.last_width, self.last_height)
-                {
-                    self.hide();
-                    return None;
-                }
                 let index = self.row_at(mouse.row)?;
                 self.select(index);
                 let row = &self.rows[index];
@@ -787,7 +821,7 @@ impl App {
                     if on_chevron || double {
                         self.toggle();
                     }
-                } else if herdr_sidebar::embed::is_embedded() {
+                } else if self.ctx.uses_external_editor() {
                     self.open_preview(&path);
                 } else if double {
                     // Pin the tab the first click just opened. Re-opening
@@ -1275,7 +1309,7 @@ impl App {
             .max(30) as u16;
         let width = desired_width.min(area.width);
         // The hotkey reference lives here now; the footer chips are opt-in.
-        let hint_lines = wrap_hints(&self.hints(), width.saturating_sub(2), 0);
+        let hint_lines = wrap_hints(&explorer_footer::hints(self), width.saturating_sub(2), 0);
         let Some(Overlay::Settings { selected, rect }) = self.overlay.as_mut() else {
             return;
         };
@@ -1446,7 +1480,14 @@ impl App {
         match rx.try_recv() {
             Ok(Some(path)) => {
                 self.picking = None;
-                self.change_folder(&path.display().to_string());
+                let path_str = path.as_os_str().to_str().unwrap_or("");
+                match sidebar_root::apply_folder(path_str, self.tree.root_path().as_path(), true) {
+                    sidebar_root::FolderApply::Applied(root) => self.reroot_at(root, true),
+                    sidebar_root::FolderApply::Rejected { message: Some(msg) } => {
+                        self.notice = Some(msg)
+                    }
+                    sidebar_root::FolderApply::Rejected { message: None } => {}
+                }
             }
             Ok(None) => {
                 self.picking = None;
@@ -1474,37 +1515,24 @@ impl App {
     }
 
     fn change_folder_impl(&mut self, raw: &str, manual: bool) {
-        let raw = raw.trim();
-        if raw.is_empty() {
-            self.notice = Some("empty path".into());
-            return;
-        }
-        let expanded = match raw.strip_prefix('~') {
-            Some(rest) => {
-                let home = std::env::var("USERPROFILE")
-                    .or_else(|_| std::env::var("HOME"))
-                    .unwrap_or_default();
-                format!("{home}{rest}")
+        match sidebar_root::apply_folder(raw, self.tree.root_path().as_path(), manual) {
+            sidebar_root::FolderApply::Applied(root) => self.reroot_at(root, manual),
+            sidebar_root::FolderApply::Rejected { message: Some(msg) } => {
+                self.notice = Some(msg)
             }
-            None => raw.to_string(),
-        };
-        let target = PathBuf::from(&expanded);
-        let target = if target.is_relative() {
-            self.tree.root_path().join(target)
-        } else {
-            target
-        };
-        if !target.is_dir() || std::env::set_current_dir(&target).is_err() {
-            self.notice = Some(format!("not a folder: {raw}"));
-            return;
+            sidebar_root::FolderApply::Rejected { message: None } => {}
         }
-        let root = std::env::current_dir().unwrap_or(target);
+    }
+
+    fn reroot_at(&mut self, root: PathBuf, manual: bool) {
         if manual && self.sidebar_state.follow_cwd {
             self.cwd_follower.borrow_mut().mark_manual_folder();
         }
         let cwd_follower = std::rc::Rc::clone(&self.cwd_follower);
-        *self = App::new(root, cwd_follower);
-        self.notice = Some(format!("folder: {}", self.tree.root_name()));
+        *self = App::new(root, cwd_follower, self.ctx);
+        if manual {
+            self.notice = Some(format!("folder: {}", self.tree.root_name()));
+        }
     }
 
     fn confirm_prompt(&mut self) {
@@ -1694,6 +1722,10 @@ impl App {
     /// still exists (else the nearest valid index).
     fn rebuild(&mut self) {
         self.hovered = None;
+        if self.search.active() {
+            explorer_search::apply_search(self);
+            return;
+        }
         let selected_path = self.selected_row().map(|r| r.path.clone());
         self.persist_tree();
         self.rows = self.tree.rows();
@@ -1723,7 +1755,7 @@ impl App {
         // No own border/title: herdr already frames the pane and titles it with
         // the pane label ("Explorer"/"Files") — a second border read as a
         // double frame.
-        let footer_height = self.footer_height(frame.area().width);
+        let footer_height = explorer_footer::footer_height(self, frame.area().width);
         // A breathing row above and below the icons keeps the activity bar
         // from crowding the pane border.
         let activity_height = if self.merged() { 3 } else { 0 };
@@ -1742,7 +1774,12 @@ impl App {
         self.draw_header(frame, header);
 
         if self.rows.is_empty() {
-            frame.render_widget(Paragraph::new("  (empty)".dim().italic()), body);
+            let msg = if self.search.active() {
+                self.search.empty_message()
+            } else {
+                "  (empty)"
+            };
+            frame.render_widget(Paragraph::new(msg.dim().italic()), body);
         } else {
             let h = (body.height as usize).max(1);
             self.scroll = self.scroll.min(self.rows.len().saturating_sub(h));
@@ -1785,74 +1822,8 @@ impl App {
             offset: self.scroll,
         };
 
-        // Collapse button at the bottom-right of the LAST footer line,
-        // mirroring herdr's own sidebar. hits_collapse_button targets the
-        // pane's bottom row, which is exactly that line.
-        let last_line = Rect::new(
-            footer.x,
-            footer.y + footer.height.saturating_sub(1),
-            footer.width,
-            1,
-        );
-        let [_, footer_button] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(3)]).areas(last_line);
-        frame.render_widget(
-            Paragraph::new("«".bold().fg(Color::LightBlue)).alignment(Alignment::Center),
-            footer_button,
-        );
-        let footer_lines: Vec<Line> = if let Some((msg, color)) = self.footer_message() {
-            wrap_footer_message(&msg, footer.width, 4)
-                .into_iter()
-                .map(|l| l.fg(color).into())
-                .collect()
-        } else {
-            match &self.overlay {
-                Some(Overlay::Prompt { title, input, .. }) => {
-                    // One line, always: drop the hint when narrow, and show
-                    // the TAIL of a long input so the cursor stays visible.
-                    let head = format!(" {title}: ");
-                    let hint = "  (⏎ ok · esc cancel)";
-                    let fixed = Span::raw(head.as_str()).width() + 1 + 4;
-                    let width = usize::from(footer.width);
-                    let hint_fits =
-                        fixed + Span::raw(hint).width() + Span::raw(input.as_str()).width()
-                            <= width;
-                    let avail = width
-                        .saturating_sub(fixed)
-                        .saturating_sub(if hint_fits {
-                            Span::raw(hint).width()
-                        } else {
-                            0
-                        })
-                        .max(4);
-                    let mut spans = vec![
-                        Span::styled(head, Style::default().bold()),
-                        Span::raw(input_tail(input, avail)),
-                        Span::styled("█", Style::default().dim()),
-                    ];
-                    if hint_fits {
-                        spans.push(Span::styled(hint, Style::default().dim()));
-                    }
-                    vec![Line::from(spans)]
-                }
-                _ if self.show_hotkeys() => wrap_hints(&self.hints(), frame.area().width, 3),
-                _ => Vec::new(),
-            }
-        };
-        let footer_empty = footer_lines.is_empty();
+        let footer_lines = explorer_footer::footer_lines(self, footer.width);
         frame.render_widget(Paragraph::new(footer_lines), footer);
-        if footer_empty {
-            let hint_area = Rect::new(
-                last_line.x,
-                last_line.y,
-                last_line.width.saturating_sub(3),
-                1,
-            );
-            frame.render_widget(
-                Paragraph::new(" m / ctrl+rclick: menu".dim().italic()),
-                hint_area,
-            );
-        }
 
         match self.overlay {
             Some(Overlay::Menu { .. }) => self.draw_menu(frame),
@@ -1924,56 +1895,6 @@ impl App {
         if let Some(pane_id) = self.pane_ctl.as_ref().map(|c| c.pane_id.clone()) {
             herdr_sidebar::viewer::close_in_tab(&pane_id);
         }
-    }
-
-    /// The hotkey hints for the current mode.
-    fn hints(&self) -> Vec<(&'static str, &'static str)> {
-        let mut hints = vec![
-            ("↑↓", "move"),
-            ("←→", "fold"),
-            ("⏎", "toggle"),
-            ("r", "refresh"),
-            (".", "dotfiles"),
-            ("c", "folder"),
-            ("m", "menu"),
-            ("s", "settings"),
-            ("b", "hide"),
-            ("q", "quit"),
-        ];
-        if self.merged() {
-            hints.extend([("1", "files"), ("2", "git")]);
-        }
-        hints
-    }
-
-    /// Rows the footer needs at `width`: notices and confirms WRAP in narrow
-    /// panes (a one-line assumption used to clip "Delete '…' permanently?
-    /// (y/N)" mid-question); the name prompt stays one line (its input
-    /// shrinks instead); hints wrap as before.
-    fn footer_height(&self, width: u16) -> u16 {
-        if let Some((msg, _)) = self.footer_message() {
-            return wrap_footer_message(&msg, width, 4).len() as u16;
-        }
-        if self.overlay.is_some() || !self.show_hotkeys() {
-            return 1; // prompt / menu / settings share one line with «
-        }
-        wrap_hints(&self.hints(), width, 3).len() as u16
-    }
-
-    /// The uniform-style footer message, if one is active: a notice, or the
-    /// delete confirm. Shared by footer_height and draw so they agree.
-    fn footer_message(&self) -> Option<(String, Color)> {
-        if let Some(notice) = &self.notice {
-            return Some((notice.clone(), Color::Yellow));
-        }
-        if let Some(Overlay::ConfirmDelete { path, .. }) = &self.overlay {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            return Some((format!("Delete '{name}' permanently? (y/N)"), Color::Red));
-        }
-        None
     }
 
     /// The VS Code activity bar: view-switcher icons plus a detach button.
@@ -2277,15 +2198,6 @@ fn row_index_at(body: BodyGeom, row_count: usize, mouse_row: u16) -> Option<usiz
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn collapse_button_hit_region_is_header_right_edge() {
-        assert!(hits_collapse_button(30, 49, 32, 50), "footer right edge");
-        assert!(hits_collapse_button(28, 49, 32, 50));
-        assert!(!hits_collapse_button(27, 49, 32, 50), "left of the button");
-        assert!(!hits_collapse_button(30, 0, 32, 50), "header row");
-        assert!(!hits_collapse_button(30, 48, 32, 50), "tree row");
-    }
 
     #[test]
     fn menu_navigation_skips_separators_and_clamps() {

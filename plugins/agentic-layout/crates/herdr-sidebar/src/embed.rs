@@ -9,7 +9,37 @@ use std::process::Command;
 
 pub fn is_embedded() -> bool {
     std::env::var("AGENTIC_LAYOUT_EMBEDDED").is_ok()
+        || std::env::var("AGENTIC_LAYOUT_PLUGIN_ID").is_ok()
         || std::env::args().any(|arg| arg == "--embedded")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SidebarContext {
+    embedded: bool,
+}
+
+impl SidebarContext {
+    pub fn detect() -> Self {
+        Self {
+            embedded: is_embedded(),
+        }
+    }
+
+    pub fn embedded(&self) -> bool {
+        self.embedded
+    }
+
+    pub fn follow_cwd(&self, user_enabled: bool) -> bool {
+        !self.embedded && user_enabled
+    }
+
+    pub fn git_actions(&self) -> bool {
+        !self.embedded
+    }
+
+    pub fn uses_external_editor(&self) -> bool {
+        self.embedded
+    }
 }
 
 fn herdr_bin() -> String {

@@ -19,6 +19,15 @@ _pane_is_shell() {
   [[ -z "$agent" || "$agent" == "null" ]]
 }
 
+_pane_has_sidebar_token() {
+  local pane="$1" sidebar_bin panes
+  [[ -n "$pane" ]] || return 1
+  sidebar_bin="$(_sidebar_bin)"
+  [[ -x "$sidebar_bin" ]] || return 1
+  panes="$(_herdr_json pane list)" || return 1
+  [[ "$("$sidebar_bin" --pane-has-token "$pane" <<<"$panes")" == "yes" ]]
+}
+
 _pane_run_login() {
   local pane="$1" cmd="$2" sh
   sh="$(_login_shell)"
@@ -29,6 +38,7 @@ _pane_run_sidebar() {
   local pane="$1" sidebar_bin="$2"
   local -a run_cmd=(env AGENTIC_LAYOUT_EMBEDDED=1 AGENTIC_LAYOUT_PLUGIN_ID=agentic-dev.layout)
   run_cmd+=(HERDR_SIDEBAR_FONT_PROMPT=off)
+  run_cmd+=(HERDR_PLUGIN_STATE_DIR="$(_state_dir)")
   run_cmd+=(HERDR_PLUGIN_ROOT="$PLUGIN_ROOT")
   [[ -n "${HERDR_WORKSPACE_ID:-}" ]] && run_cmd+=(HERDR_WORKSPACE_ID="$HERDR_WORKSPACE_ID")
   [[ -n "${HERDR_BIN_PATH:-}" ]] && run_cmd+=(HERDR_BIN_PATH="${HERDR_BIN_PATH}")
@@ -36,6 +46,16 @@ _pane_run_sidebar() {
   _stamp_metadata "$pane" sidebar
   _herdr_json pane run "$pane" "${run_cmd[@]}" >/dev/null 2>&1 || true
   _rename_pane "$pane" sidebar
+}
+
+_restart_sidebar_pane() {
+  local pane="$1" sidebar_bin
+  [[ -n "$pane" ]] || return 0
+  _pane_exists "$pane" || return 0
+  _pane_is_shell "$pane" || return 0
+  sidebar_bin="$(_sidebar_bin)"
+  [[ -x "$sidebar_bin" ]] || return 0
+  _pane_run_sidebar "$pane" "$sidebar_bin"
 }
 
 _shell_launch() {
@@ -114,6 +134,9 @@ _ensure_pane_live() {
       _restart_pane_cmd "$pane" "$(_review_launch)"
       ;;
     sidebar)
+      if _pane_has_sidebar_token "$pane"; then
+        return 1
+      fi
       sidebar_bin="$(_sidebar_bin)"
       [[ -x "$sidebar_bin" ]] || return 1
       _pane_run_sidebar "$pane" "$sidebar_bin"

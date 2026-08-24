@@ -1,8 +1,7 @@
-//! Per-tab "the user closed/hid the sidebar here" markers: hide (« or b) and
-//! the toggle CLOSE write one, the quiet ensure hook honors it — otherwise the
-//! very next focus event would reopen what the user just closed. Toggle OPEN
-//! clears it. Markers for tabs that no longer exist are swept each ensure run
-//! (tab ids can be recycled).
+//! Per-tab "the user closed/hid the sidebar here" markers. The standalone
+//! sidebar ensure hook honors them so a focus event does not immediately
+//! reopen what the user just closed. Markers for tabs that no longer exist
+//! are swept each ensure run (tab ids can be recycled).
 
 use std::path::PathBuf;
 

@@ -390,7 +390,9 @@ main() {
       ;;
     apply)
       _resolve_context
-      _layout_ensure 1 >/dev/null
+      state="$(_layout_ensure 1)"
+      pane="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
+      _restart_sidebar_pane "$pane"
       if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
         _select_center shell
       fi

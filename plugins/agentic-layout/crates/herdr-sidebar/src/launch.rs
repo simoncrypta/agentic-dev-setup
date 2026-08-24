@@ -14,6 +14,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::sidebar_root::is_plugin_hook_cwd;
+
 /// The pane label the launcher assigns (`pane rename`) and later looks for.
 pub const PANE_LABEL: &str = "Explorer";
 
@@ -109,7 +111,8 @@ impl CwdFollower {
             let picked = pick_sibling(&changed, self.selected.as_deref())?;
             self.selected = Some(picked.pane_id.clone());
             self.manual_override = false;
-            return Some(picked.cwd.clone());
+            let cwd = picked.cwd.clone();
+            return (!is_plugin_hook_cwd(&cwd)).then_some(cwd);
         }
 
         let prior_selected = self.selected.clone();
@@ -124,9 +127,13 @@ impl CwdFollower {
         self.seen = next_seen;
         let picked = picked?;
         self.selected = Some(picked.pane_id.clone());
+        let cwd = picked.cwd.clone();
+        if is_plugin_hook_cwd(&cwd) {
+            return None;
+        }
         (prior_selected.as_deref() != Some(picked.pane_id.as_str())
             || prior_cwd.as_deref() != Some(picked.cwd.as_str()))
-        .then(|| picked.cwd.clone())
+        .then_some(cwd)
     }
 }
 

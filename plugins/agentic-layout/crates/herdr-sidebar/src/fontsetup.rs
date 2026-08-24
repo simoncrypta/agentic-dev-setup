@@ -47,6 +47,15 @@ fn env_mode() -> Option<String> {
         .map(|v| v.trim().to_lowercase())
 }
 
+pub fn bootstrap_icon_theme() -> state::State {
+    state::update_state(|st| {
+        if crate::embed::is_embedded() || st.icons.is_none() {
+            st.icons = Some(icons::IconTheme::Material);
+        }
+        st.font_prompt_done = true;
+    })
+}
+
 /// Show the prompt if this looks like a first run on a machine without a
 /// Nerd Font (and the user hasn't answered before or picked a theme).
 ///
@@ -62,12 +71,16 @@ pub fn maybe_prompt(
 ) -> std::io::Result<()> {
     let mode = env_mode();
     if mode.as_deref() == Some("off") {
+        bootstrap_icon_theme();
         return Ok(());
     }
     let mut st = state::load_state();
     if mode.as_deref() != Some("force")
         && (st.font_prompt_done || st.icons.is_some() || icons::nerd_font_installed())
     {
+        if crate::embed::is_embedded() {
+            bootstrap_icon_theme();
+        }
         return Ok(());
     }
     let mut heartbeat = Heartbeat::new(view, merged);
@@ -186,7 +199,14 @@ fn run(
                 }
                 // Only an explicit decline answers "no" — a stray arrow key
                 // must not silently commit the user to emoji icons.
-                KeyCode::Char('n' | 'N' | 'q') | KeyCode::Esc => {
+                KeyCode::Char('n' | 'N') => {
+                    *st = state::update_state(|state| {
+                        state.font_prompt_done = true;
+                        state.icons = Some(icons::IconTheme::Emoji);
+                    });
+                    return Ok(());
+                }
+                KeyCode::Char('q') | KeyCode::Esc => {
                     *st = state::update_state(|state| state.font_prompt_done = true);
                     return Ok(());
                 }
@@ -672,6 +692,7 @@ fn install(tx: &Sender<Progress>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn text_of(lines: &[Line<'_>]) -> String {
         lines
@@ -836,5 +857,21 @@ mod tests {
         let text = text_of(&lines);
         let cont = text.lines().nth(1).unwrap();
         assert!(cont.starts_with("    "), "hanging indent: {cont:?}");
+    }
+
+    #[test]
+    fn bootstrap_icon_theme_persists_a_default() {
+        let tmp = std::env::temp_dir().join(format!("font-bootstrap-{}", std::process::id()));
+        fs::create_dir_all(&tmp).unwrap();
+        unsafe {
+            std::env::set_var("HERDR_PLUGIN_STATE_DIR", &tmp);
+        }
+        let st = bootstrap_icon_theme();
+        assert!(st.font_prompt_done);
+        assert_eq!(st.icons, Some(icons::IconTheme::Material));
+        unsafe {
+            std::env::remove_var("HERDR_PLUGIN_STATE_DIR");
+        }
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

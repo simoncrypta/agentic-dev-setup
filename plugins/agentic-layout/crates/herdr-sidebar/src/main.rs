@@ -167,15 +167,16 @@ fn main() -> std::io::Result<()> {
     // itself (the app loops haven't started yet, and a token-less pane gets
     // REPLACE-killed by the corpse rule while the user reads the prompt).
     herdr_sidebar::fontsetup::maybe_prompt(&mut terminal, view, persisted.merged)?;
+    let ctx = herdr_sidebar::embed::SidebarContext::detect();
     let cwd_follower = Rc::new(RefCell::new(launch::CwdFollower::default()));
     let workspace_label = workspace_label();
     let result = loop {
         let exit = match view {
             View::Explorer => {
-                run_explorer(&mut terminal, Rc::clone(&cwd_follower), &workspace_label)
+                run_explorer(&mut terminal, Rc::clone(&cwd_follower), &workspace_label, ctx)
             }
             View::SourceControl => {
-                run_scm(&mut terminal, Rc::clone(&cwd_follower), &workspace_label)
+                run_scm(&mut terminal, Rc::clone(&cwd_follower), &workspace_label, ctx)
             }
         };
         match exit {
@@ -208,35 +209,17 @@ fn workspace_label() -> String {
         .unwrap_or_default()
 }
 
-/// The directory the tree is built from: the root this space remembers,
-/// else the cwd the pane was spawned with.
-///
-/// The spawn cwd is only a guess — the ensure hook takes it from whichever
-/// pane happened to be focused — so a remembered choice always wins. A
-/// remembered root that has since been deleted is ignored rather than
-/// yielding an empty tree.
-fn resolve_root(workspace_label: &str) -> std::io::Result<std::path::PathBuf> {
-    let root = if let Some(root) = herdr_sidebar::state::load_root(workspace_label)
-        && root.is_dir()
-    {
-        root
-    } else {
-        std::env::current_dir()?
-    };
-    herdr_sidebar::state::save_root(workspace_label, &root);
-    Ok(root)
-}
-
 /// The explorer's event loop: short poll so the liveness heartbeat keeps
 /// stamping even while idle.
 fn run_explorer(
     terminal: &mut ratatui::DefaultTerminal,
     cwd_follower: Rc<RefCell<launch::CwdFollower>>,
     workspace_label: &str,
+    ctx: herdr_sidebar::embed::SidebarContext,
 ) -> std::io::Result<Exit> {
-    let root = resolve_root(workspace_label)?;
+    let root = herdr_sidebar::sidebar_root::resolve_startup_root(workspace_label, ctx)?;
     let mut remembered_root = root.clone();
-    let mut app = explorer_app::App::new(root, cwd_follower);
+    let mut app = explorer_app::App::new(root, cwd_follower, ctx);
     loop {
         terminal.draw(|frame| app.draw(frame))?;
         // 500ms: quick enough that a finished folder pick lands promptly,
@@ -272,10 +255,11 @@ fn run_scm(
     terminal: &mut ratatui::DefaultTerminal,
     cwd_follower: Rc<RefCell<launch::CwdFollower>>,
     workspace_label: &str,
+    ctx: herdr_sidebar::embed::SidebarContext,
 ) -> std::io::Result<Exit> {
-    let cwd = resolve_root(workspace_label)?;
+    let cwd = herdr_sidebar::sidebar_root::resolve_startup_root(workspace_label, ctx)?;
     let mut remembered_root = cwd.clone();
-    let mut app = scm_app::App::new(cwd, cwd_follower);
+    let mut app = scm_app::App::new(cwd, cwd_follower, ctx);
     let mut last_tick = std::time::Instant::now();
     loop {
         terminal.draw(|frame| app.draw(frame))?;

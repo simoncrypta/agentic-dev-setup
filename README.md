@@ -100,7 +100,7 @@ npx skills add simoncrypta/agentic-dev-setup --skill handoff -g
 Use this when you already have Herdr set up and only want the **layout plugin** (`agentic-dev.layout`).
 
 ```bash
-herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.2
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.3
 ```
 
 | Comes with plugin install | Full install also adds |
