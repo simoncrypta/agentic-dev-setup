@@ -847,6 +847,11 @@ deploy_configs() {
 
   deploy_agentic_dev_config
   deploy_lib
+  if [[ -f "${AGENTIC_DEV_SHARE_DIR}/lib/config.sh" ]]; then
+    # deploy_lib may have pulled a newer lib/; reload the plugin pin before install.
+    # shellcheck source=/dev/null
+    source "${AGENTIC_DEV_SHARE_DIR}/lib/config.sh"
+  fi
   deploy_plugin
   deploy_skills
 
