@@ -11,6 +11,8 @@ use nucleo_matcher::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::git::Git;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
     pub name: String,
@@ -201,18 +203,28 @@ impl Tree {
         }
         let mut paths = Vec::new();
         let root = self.root.clone();
-        self.search_collect(&root, &root, &mut paths);
+        let ignored = search_ignored_roots(&root);
+        self.search_collect(&root, &root, &ignored, &mut paths);
         self.search_index_hidden = self.show_hidden;
         self.search_index = Some(paths);
     }
 
-    fn search_collect(&mut self, dir: &Path, root: &Path, out: &mut Vec<(String, Row)>) {
+    fn search_collect(
+        &mut self,
+        dir: &Path,
+        root: &Path,
+        ignored: &[PathBuf],
+        out: &mut Vec<(String, Row)>,
+    ) {
         let show_hidden = self.show_hidden;
         for entry in self.children(dir) {
             if !visible(&entry.name, show_hidden) {
                 continue;
             }
             let path = dir.join(&entry.name);
+            if path_is_ignored(&path, ignored) {
+                continue;
+            }
             let rel = path
                 .strip_prefix(root)
                 .unwrap_or(&path)
@@ -229,10 +241,31 @@ impl Tree {
                 },
             ));
             if entry.is_dir {
-                self.search_collect(&path, root, out);
+                self.search_collect(&path, root, ignored, out);
             }
         }
     }
+}
+
+/// Absolute ignored roots from every git repo under `root` (collapsed dirs and
+/// individual ignored files). Empty when the tree is not in a repository.
+fn search_ignored_roots(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for git in Git::discover_all(root) {
+        let Ok(rels) = git.ignored() else {
+            continue;
+        };
+        for rel in rels {
+            out.push(git.root().join(rel));
+        }
+    }
+    out
+}
+
+fn path_is_ignored(path: &Path, ignored: &[PathBuf]) -> bool {
+    ignored
+        .iter()
+        .any(|root| path == root || path.starts_with(root))
 }
 
 /// VS Code Explorer order: directories first, then files, each case-insensitive.
@@ -403,6 +436,35 @@ mod tests {
         assert_eq!(top.as_deref(), Some("src/main.rs"));
         assert!(tree.search("", 50).is_empty());
         assert!(tree.search("missing-xyz", 50).is_empty());
+    }
+
+    #[test]
+    fn search_skips_gitignore_paths() {
+        let tmp = TempDir::new("search-ignore");
+        tmp.mkdir("src");
+        tmp.mkdir("target/debug");
+        tmp.touch("src/main.rs");
+        tmp.touch("target/debug/app");
+        tmp.touch("noise.log");
+        tmp.touch("keep.txt");
+        fs::write(tmp.0.join(".gitignore"), "target/\n*.log\n").unwrap();
+        let status = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(&tmp.0)
+            .status()
+            .expect("git init");
+        assert!(status.success());
+        let mut tree = Tree::new(tmp.0.clone());
+        let hits: Vec<_> = tree.search("a", 200).into_iter().map(|r| r.name).collect();
+        assert!(hits.iter().any(|n| n == "src/main.rs" || n == "keep.txt"));
+        assert!(
+            !hits.iter().any(|n| n.starts_with("target")),
+            "ignored dir must stay out of search: {hits:?}"
+        );
+        assert!(
+            !hits.iter().any(|n| n.ends_with(".log")),
+            "ignored files must stay out of search: {hits:?}"
+        );
     }
 
     #[test]
