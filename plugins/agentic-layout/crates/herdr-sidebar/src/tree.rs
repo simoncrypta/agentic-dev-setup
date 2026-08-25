@@ -5,8 +5,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use nucleo_matcher::{
-    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
     Config, Matcher,
+    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -395,11 +395,7 @@ mod tests {
         tmp.touch("src/lib/util.rs");
         tmp.touch("README.md");
         let mut tree = Tree::new(tmp.0.clone());
-        let hits: Vec<_> = tree
-            .search("rs", 50)
-            .into_iter()
-            .map(|r| r.name)
-            .collect();
+        let hits: Vec<_> = tree.search("rs", 50).into_iter().map(|r| r.name).collect();
         assert!(hits.contains(&"src/main.rs".into()));
         assert!(hits.contains(&"src/lib/util.rs".into()));
         assert!(!hits.contains(&"README.md".into()));

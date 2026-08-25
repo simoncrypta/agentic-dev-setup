@@ -81,12 +81,7 @@ pub fn wrap_hints(
     lines.into_iter().map(Line::from).collect()
 }
 
-pub fn footer_input_line(
-    head: &str,
-    input: &str,
-    hint: &str,
-    width: u16,
-) -> Vec<Line<'static>> {
+pub fn footer_input_line(head: &str, input: &str, hint: &str, width: u16) -> Vec<Line<'static>> {
     let head = head.to_string();
     let hint = hint.to_string();
     let fixed = Span::raw(head.as_str()).width() + 1 + 4;

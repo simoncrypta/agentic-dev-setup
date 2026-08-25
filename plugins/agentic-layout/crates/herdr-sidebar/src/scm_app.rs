@@ -30,9 +30,8 @@ use herdr_sidebar::state::{self as sidebar, View};
 use herdr_sidebar::suggest;
 use herdr_sidebar::ui::{
     DELETED, TitleAction, UNTRACKED, activity_icons, branch_icon, draw_scrollbar, gear_icon, hits,
-    sibling_panes_of, sparkle_icon, status_color, title_action_spans,
-    title_actions_visible, title_actions_width, truncate_to, within, wrap_footer_message,
-    wrap_hints,
+    sibling_panes_of, sparkle_icon, status_color, title_action_spans, title_actions_visible,
+    title_actions_width, truncate_to, within, wrap_footer_message, wrap_hints,
 };
 
 // VS Code's dark-theme button colors; the git status colors themselves live

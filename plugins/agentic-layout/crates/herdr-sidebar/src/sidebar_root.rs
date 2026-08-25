@@ -43,11 +43,7 @@ pub fn resolve_startup_root(workspace_label: &str, ctx: SidebarContext) -> io::R
     }
     let root = state::load_root(workspace_label)
         .filter(|r| plausible_path(r))
-        .or_else(|| {
-            std::env::current_dir()
-                .ok()
-                .filter(|r| plausible_path(r))
-        })
+        .or_else(|| std::env::current_dir().ok().filter(|r| plausible_path(r)))
         .unwrap_or_else(|| PathBuf::from("."));
     state::save_root(workspace_label, &root);
     Ok(root)
@@ -130,7 +126,11 @@ mod tests {
     #[test]
     fn apply_folder_rejects_hook_cwd_silently_even_when_manual() {
         assert!(matches!(
-            apply_folder("/tmp/work/agentic-dev-setup-dev.layout", Path::new("/tmp"), true),
+            apply_folder(
+                "/tmp/work/agentic-dev-setup-dev.layout",
+                Path::new("/tmp"),
+                true
+            ),
             FolderApply::Rejected { message: None }
         ));
     }

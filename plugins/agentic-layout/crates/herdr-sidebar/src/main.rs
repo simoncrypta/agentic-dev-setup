@@ -172,12 +172,18 @@ fn main() -> std::io::Result<()> {
     let workspace_label = workspace_label();
     let result = loop {
         let exit = match view {
-            View::Explorer => {
-                run_explorer(&mut terminal, Rc::clone(&cwd_follower), &workspace_label, ctx)
-            }
-            View::SourceControl => {
-                run_scm(&mut terminal, Rc::clone(&cwd_follower), &workspace_label, ctx)
-            }
+            View::Explorer => run_explorer(
+                &mut terminal,
+                Rc::clone(&cwd_follower),
+                &workspace_label,
+                ctx,
+            ),
+            View::SourceControl => run_scm(
+                &mut terminal,
+                Rc::clone(&cwd_follower),
+                &workspace_label,
+                ctx,
+            ),
         };
         match exit {
             Ok(Exit::Quit) => break Ok(()),

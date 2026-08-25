@@ -26,9 +26,8 @@ use herdr_sidebar::ipc;
 use herdr_sidebar::state::{self as sidebar, Exit, View};
 use herdr_sidebar::tree::{Row, Tree};
 use herdr_sidebar::ui::{
-    TitleAction, activity_icons, draw_scrollbar, gear_icon, hits,
-    sibling_panes_of, status_color, title_action_spans, title_actions_visible, title_actions_width,
-    truncate_to, wrap_hints,
+    TitleAction, activity_icons, draw_scrollbar, gear_icon, hits, sibling_panes_of, status_color,
+    title_action_spans, title_actions_visible, title_actions_width, truncate_to, wrap_hints,
 };
 
 use herdr_sidebar::sidebar_root;
@@ -554,12 +553,11 @@ impl App {
             .cwd_follower
             .borrow_mut()
             .next_cwd(&panes, &ctl.pane_id);
-        if let Some(target) = target {
-            if let Some(root) =
+        if let Some(target) = target
+            && let Some(root) =
                 sidebar_root::follow_sibling_target(&target, self.tree.root_path().as_path())
-            {
-                self.reroot_at(root, false);
-            }
+        {
+            self.reroot_at(root, false);
         }
     }
 
@@ -1517,9 +1515,7 @@ impl App {
     fn change_folder_impl(&mut self, raw: &str, manual: bool) {
         match sidebar_root::apply_folder(raw, self.tree.root_path().as_path(), manual) {
             sidebar_root::FolderApply::Applied(root) => self.reroot_at(root, manual),
-            sidebar_root::FolderApply::Rejected { message: Some(msg) } => {
-                self.notice = Some(msg)
-            }
+            sidebar_root::FolderApply::Rejected { message: Some(msg) } => self.notice = Some(msg),
             sidebar_root::FolderApply::Rejected { message: None } => {}
         }
     }
