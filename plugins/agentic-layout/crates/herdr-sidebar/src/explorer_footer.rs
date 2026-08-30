@@ -12,6 +12,9 @@ pub(super) fn essential_hints(app: &App) -> Vec<(&'static str, &'static str)> {
         ("m", "menu"),
         ("s", "settings"),
     ];
+    if app.ctx.uses_external_editor() {
+        hints.push(("v", "review"));
+    }
     if app.merged() {
         hints.extend([("1", "files"), ("2", "git")]);
     }
@@ -31,6 +34,9 @@ pub(super) fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
         ("s", "settings"),
         ("q", "quit"),
     ];
+    if app.ctx.uses_external_editor() {
+        hints.push(("v", "review"));
+    }
     if app.merged() {
         hints.extend([("1", "files"), ("2", "git")]);
     }

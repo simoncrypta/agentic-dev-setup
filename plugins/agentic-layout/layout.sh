@@ -112,11 +112,8 @@ _review_cmd() {
   fi
 }
 
+# On-demand Review is a hunk session. Always watch so comments stream.
 _review_launch() {
-  _review_cmd
-}
-
-_review_refresh_launch() {
   local cmd
   cmd="$(_review_cmd)"
   case "$cmd" in
@@ -185,25 +182,29 @@ _dev_state() {
 
 _select_center() {
   local view="$1" state
-  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  state="$(_dev_state)" || state="$(_layout_ensure)"
   if [[ -z "$state" ]]; then
     return 0
+  fi
+  if [[ "$view" == review ]]; then
+    _open_review || return 1
   fi
   _activate_center_view "$view"
 }
 
 _focus_agent() {
   local state agent_pane view
-  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  state="$(_dev_state)" || state="$(_layout_ensure)"
   [[ -n "$state" ]] || return 0
   view="$(printf '%s' "$state" | _jq '.active_center_view // "shell"')"
   _activate_center_view "$view"
   agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
   if ! _pane_exists "$agent_pane"; then
-    state="$(_layout_ensure 1)"
+    state="$(_layout_ensure)"
     agent_pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
-  else
-    _maybe_start_agent_pane "$agent_pane" 1
+  fi
+  if _pane_exists "$agent_pane" && _pane_is_shell "$agent_pane"; then
+    _launch_agent_on_pane "$agent_pane" || true
   fi
   if _pane_exists "$agent_pane"; then
     _herdr_json agent focus "$agent_pane" >/dev/null 2>&1 \
@@ -218,7 +219,7 @@ _refresh_review() {
   state="$(_dev_state)" || return 0
   review="$(printf '%s' "$state" | _jq '.review_pane_id // empty')"
   [[ -n "$review" ]] && _pane_exists "$review" || return 0
-  _restart_pane_cmd "$review" "$(_review_refresh_launch)"
+  _restart_pane_cmd "$review" "$(_review_launch)"
 }
 
 _toggle_sidebar() {
@@ -274,7 +275,7 @@ _open_editor() {
   [[ -n "$path" ]] || { echo "agentic-layout: open-editor requires a path" >&2; return 1; }
   path="$(_abs_path "$path")"
   [[ -e "$path" ]] || { echo "agentic-layout: open-editor path not found: $path" >&2; return 1; }
-  state="$(_dev_state)" || state="$(_layout_ensure 1)"
+  state="$(_dev_state)" || state="$(_layout_ensure)"
   workspace_id="$(printf '%s' "$state" | _jq '.workspace_id')"
   existing="$(printf '%s' "$state" | jq -r --arg path "$path" '.editors[$path].pane_id // empty')"
   if [[ -n "$existing" ]] && _pane_exists "$existing"; then
@@ -304,21 +305,22 @@ _open_editor() {
 }
 
 _on_pane_exited() {
-  local pane_id="${1:-}" path workspace_id editor_tab editor_ws
+  local pane_id="${1:-}" path workspace_id close_tab close_ws
   [[ -n "$pane_id" ]] || return 0
-  editor_tab=""
-  editor_ws=""
+  close_tab=""
+  close_ws=""
   shopt -s nullglob
   for path in "$(_state_dir)"/*.json; do
     [[ -f "$path" ]] || continue
     workspace_id="${path##*/}"
     workspace_id="${workspace_id%.json}"
-    if [[ -z "$editor_tab" ]]; then
-      editor_tab="$(jq -r --arg pane "$pane_id" \
-        '[(.editors // {})[] | select(.pane_id == $pane) | .tab_id][0] // empty' \
-        "$path" 2>/dev/null || true)"
-      if [[ -n "$editor_tab" ]]; then
-        editor_ws="$workspace_id"
+    if [[ -z "$close_tab" ]]; then
+      close_tab="$(jq -r --arg pane "$pane_id" '
+        [(.editors // {})[] | select(.pane_id == $pane) | .tab_id][0] //
+        (if .review_pane_id == $pane then .review_tab_id else empty end)
+      ' "$path" 2>/dev/null || true)"
+      if [[ -n "$close_tab" ]]; then
+        close_ws="$workspace_id"
       fi
     fi
     _state_update "$workspace_id" --arg pane "$pane_id" '
@@ -329,9 +331,9 @@ _on_pane_exited() {
       | .editors = ((.editors // {}) | to_entries | map(select(.value.pane_id != $pane)) | from_entries)'
   done
   shopt -u nullglob
-  if [[ -n "$editor_tab" && -n "$editor_ws" ]]; then
-    export HERDR_WORKSPACE_ID="$editor_ws"
-    _close_tab_id "$editor_tab"
+  if [[ -n "$close_tab" && -n "$close_ws" ]]; then
+    export HERDR_WORKSPACE_ID="$close_ws"
+    _close_tab_id "$close_tab"
   fi
 }
 
@@ -361,42 +363,6 @@ _resolve_context() {
   [[ -n "$focused" ]] && export HERDR_WORKSPACE_ID="$focused"
 }
 
-_prompt_if_requested() {
-  local state="$1"
-  local pane timeout_ms wait_ms interval_ms waited=0 agent status
-  [[ -n "${WT_HERDR_AGENT_PROMPT:-}" ]] || return 0
-  pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
-  if [[ -z "$pane" ]]; then
-    echo "agentic-layout: no agent_pane_id; cannot submit prompt" >&2
-    return 1
-  fi
-  timeout_ms="${WT_HERDR_AGENT_READY_TIMEOUT_MS:-30000}"
-  wait_ms="${WT_HERDR_AGENT_PROMPT_WAIT_MS:-15000}"
-  interval_ms=100
-  while true; do
-    agent="$(_herdr_json pane get "$pane" | _jq '.result.pane.agent // .result.agent // empty')"
-    if [[ -n "$agent" ]]; then
-      break
-    fi
-    if (( waited >= timeout_ms )); then
-      echo "agentic-layout: agent TUI did not start on pane $pane" >&2
-      return 1
-    fi
-    sleep 0.1
-    waited=$((waited + interval_ms))
-  done
-  status="$(_herdr_json pane get "$pane" | _jq '.result.pane.agent_status // empty')"
-  if [[ "$status" == "working" || "$status" == "blocked" ]]; then
-    echo "agentic-layout: skipping prompt; pane $pane already $status" >&2
-    return 0
-  fi
-  if ! "$HERDR" agent prompt "$pane" "$WT_HERDR_AGENT_PROMPT" \
-    --wait --until working --timeout "$wait_ms" >/dev/null; then
-    echo "agentic-layout: herdr agent prompt failed for pane $pane" >&2
-    return 1
-  fi
-}
-
 main() {
   local cmd="${1:-}"
   [[ -n "$cmd" ]] || cmd="${HERDR_PLUGIN_ACTION_ID:-}"
@@ -404,22 +370,24 @@ main() {
 
   case "$cmd" in
     create)
-      local state
       _resolve_context
-      state="$(_layout_ensure 1)"
+      _layout_ensure
       if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
         _select_center shell
       fi
-      _prompt_if_requested "$state"
       ;;
     apply)
       _resolve_context
-      state="$(_layout_ensure 1)"
+      state="$(_layout_ensure)"
       pane="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
       _restart_sidebar_pane "$pane"
       if [[ -z "${WT_HERDR_NO_ATTACH:-}" ]]; then
         _select_center shell
       fi
+      ;;
+    start-agent|start_agent)
+      _resolve_context
+      _start_agent
       ;;
     startup) _on_startup ;;
     focus-agent|focus_agent)
@@ -429,6 +397,10 @@ main() {
     select-review|select_review)
       _resolve_context
       _select_center review
+      ;;
+    close-review|close_review)
+      _resolve_context
+      _close_review
       ;;
     refresh-review|refresh_review)
       _resolve_context

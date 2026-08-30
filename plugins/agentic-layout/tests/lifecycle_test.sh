@@ -73,7 +73,7 @@ JSON
 export HERDR_WORKSPACE_ID=w1
 : >"$HERDR_CALL_LOG"
 _startup_one w1
-grep -q 'pane run pane-review' "$HERDR_CALL_LOG" || fail "startup should relaunch corpse review pane"
+grep -q 'pane run pane-review' "$HERDR_CALL_LOG" && fail "startup should not relaunch corpse review pane"
 grep -q 'pane run pane-sidebar' "$HERDR_CALL_LOG" || fail "startup should relaunch corpse sidebar pane"
 grep -q 'pane run pane-shell' "$HERDR_CALL_LOG" && fail "startup should not relaunch live shell pane"
 
@@ -84,4 +84,13 @@ last="$(jq -r '.last_heal_unix // empty' "$(_state_path w1)")"
 _startup_one w1
 grep -q 'pane run' "$HERDR_CALL_LOG" && fail "startup heal should respect cooldown and not relaunch again"
 
-printf 'PASS: startup recovers corpse review and sidebar panes once per cooldown\n'
+printf 'PASS: startup recovers corpse sidebar panes once per cooldown and leaves review alone\n'
+
+# Missing Review is healthy: do not re-ensure the whole layout.
+jq '.review_pane_id = "" | .review_tab_id = "" | del(.last_heal_unix)' "$(_state_path w1)" >"$TMP_DIR/w1.json"
+mv "$TMP_DIR/w1.json" "$(_state_path w1)"
+: >"$HERDR_CALL_LOG"
+_startup_one w1
+grep -q 'tab create' "$HERDR_CALL_LOG" && fail "startup must not create a Review tab when review is absent"
+grep -q 'pane run pane-review' "$HERDR_CALL_LOG" && fail "startup must not launch hunk when review is absent"
+printf 'PASS: startup with empty review ids does not re-ensure Review\n'

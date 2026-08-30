@@ -11,7 +11,7 @@ Install the full stack (Herdr, Worktrunk, agents, keybindings) via [agentic-dev-
 ## Plugin only
 
 ```bash
-herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.6 --yes
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.7 --yes
 ```
 
 Local development:
@@ -25,10 +25,12 @@ herdr plugin link ~/path/to/agentic-dev-setup/plugins/agentic-layout
 
 | Action | Description |
 |--------|-------------|
-| `create` | Create layout; honors `WT_HERDR_*` handoff env |
+| `create` | Create layout (agent pane stays a shell) |
 | `apply` | Idempotently repair plugin-owned panes |
-| `focus-agent` | Focus the persistent agent pane |
-| `select-review` | Show review pane (no respawn) |
+| `start-agent` | Start or replace the agent (`WT_HERDR_AGENT_CMD`, optional prompt file) |
+| `focus-agent` | Focus the persistent agent pane; start it if the pane is a shell |
+| `select-review` | Open or focus review (`hunk diff --watch`; creates the tab if needed) |
+| `close-review` | Close the Review tab and return to Shell |
 | `refresh-review` | Focus review and restart `hunk diff --watch` |
 | `select-shell` | Show live shell pane (no respawn) |
 | `toggle-sidebar` | Toggle files pane zoom |
@@ -38,7 +40,7 @@ herdr plugin link ~/path/to/agentic-dev-setup/plugins/agentic-layout
 | `close-tab` | Close the current file tab and land on the previous one |
 | `close-pane` | Close an extra split; an editor center closes the tab instead |
 
-Sidebar keys in embedded mode: `v` refreshes the center review view.
+Sidebar keys in embedded mode: `v` opens hunk in Review. Source Control splits **✓ Commit | Review** next to each other.
 
 ## Config
 

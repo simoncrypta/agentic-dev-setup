@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+
+unset BASH_ENV
+export __MISE_BASH_ENV_LOADED=1
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+
+# shellcheck disable=SC1090
+source "$ROOT/skills/handoff/scripts/handoff-spawn"
+
+git_init() {
+  local dir="$1"
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git -C "$dir" config user.email test@example.com
+  git -C "$dir" config user.name test
+  printf 'base\n' >"$dir/file.txt"
+  git -C "$dir" add file.txt
+  git -C "$dir" commit -qm base
+}
+
+test_graphite_rev_parse_is_not_enough() {
+  local repo="$TMP_DIR/plain"
+  git_init "$repo"
+  local printed
+  printed="$(git -C "$repo" rev-parse --git-path .graphite_repo_config)"
+  [[ -n "$printed" ]] || fail "rev-parse always prints a path"
+  handoff_is_graphite "$repo" && fail "plain repo must not count as Graphite"
+  mkdir -p "$(dirname "$repo/$printed")"
+  if [[ "$printed" == /* ]]; then
+    printf '{}\n' >"$printed"
+  else
+    printf '{}\n' >"$repo/$printed"
+  fi
+  handoff_is_graphite "$repo" || fail "file present must count as Graphite"
+  printf 'PASS: Graphite detection is test -f of git-path, not rev-parse alone\n'
+}
+
+test_copy_dirty_is_working_tree_not_index() {
+  local main="$TMP_DIR/main" sibling="$TMP_DIR/sibling"
+  git_init "$main"
+  git -C "$main" worktree add --detach -q "$sibling"
+
+  printf 'base\nstaged\n' >"$main/file.txt"
+  git -C "$main" add file.txt
+  printf 'base\nstaged\nunstaged\n' >"$main/file.txt"
+  printf 'loose\n' >"$main/untracked.txt"
+
+  handoff_copy_dirty "$main" "$sibling"
+
+  grep -qx 'loose' "$sibling/untracked.txt" || fail "untracked file should be copied"
+  git -C "$sibling" diff --cached --quiet \
+    || fail "sibling index must stay at HEAD (no git add)"
+  git -C "$sibling" diff --quiet HEAD \
+    && fail "sibling working tree should include tracked dirty files"
+  grep -q unstaged "$sibling/file.txt" || fail "unstaged edit missing in sibling"
+  git -C "$sibling" ls-files --error-unmatch untracked.txt >/dev/null 2>&1 \
+    && fail "untracked copy must not be git-added"
+  printf 'PASS: dirty copy is working tree only (no git add)\n'
+}
+
+test_one_line_flattens_prompt() {
+  local got
+  got="$(handoff_one_line $'fix auth\nplease')"
+  [[ "$got" == "fix auth please" ]] || fail "one-line: $got"
+  printf 'PASS: task summary flattens newlines\n'
+}
+
+test_usage() {
+  local rc=0
+  "$ROOT/skills/handoff/scripts/handoff-spawn" --help >/dev/null 2>&1 || rc=$?
+  [[ "$rc" -eq 2 ]] || fail "usage should exit 2, got $rc"
+  printf 'PASS: handoff-spawn --help exits 2\n'
+}
+
+test_prompt_text_prefixes_poteto_mode() {
+  local got
+  got="$(handoff_prompt_text $'intro\n\nfix auth')"
+  [[ "$got" == /poteto-mode$'\n\n'"intro"$'\n\n'"fix auth" ]] \
+    || fail "should prefix /poteto-mode, got ${got:0:80}"
+  got="$(handoff_prompt_text $'/poteto-mode\n\nalready')"
+  [[ "$got" == $'/poteto-mode\n\nalready' ]] || fail "must not double-prefix"
+  printf 'PASS: prompt wrap prefixes /poteto-mode once\n'
+}
+
+test_graphite_track_uses_resolved_config_path() {
+  local repo="$TMP_DIR/gt-rel"
+  git_init "$repo"
+  local printed cfg
+  printed="$(git -C "$repo" rev-parse --git-path .graphite_repo_config)"
+  if [[ "$printed" == /* ]]; then
+    cfg="$printed"
+  else
+    cfg="$repo/$printed"
+  fi
+  mkdir -p "$(dirname "$cfg")"
+  printf '{"trunk":"master"}\n' >"$cfg"
+  [[ "$(handoff_graphite_config "$repo")" == "$cfg" ]] \
+    || fail "graphite config path should resolve relative git-path"
+  (
+    cd "$TMP_DIR"
+    handoff_is_graphite "$repo" || fail "is_graphite from other cwd"
+    got="$(handoff_graphite_config "$repo")"
+    [[ "$got" == "$cfg" ]] || fail "track helper must not depend on cwd, got $got"
+  )
+  printf 'PASS: graphite config path is resolved against the repo root\n'
+}
+
+test_info_json_reports_graphite_and_dirty() {
+  local repo="$TMP_DIR/info-repo" out
+  git_init "$repo"
+  printf 'dirty\n' >>"$repo/file.txt"
+  printf 'loose\n' >"$repo/untracked.txt"
+  mkdir -p "$(dirname "$(git -C "$repo" rev-parse --git-path .graphite_repo_config)")"
+  printed="$(git -C "$repo" rev-parse --git-path .graphite_repo_config)"
+  if [[ "$printed" == /* ]]; then
+    printf '{}\n' >"$printed"
+  else
+    printf '{}\n' >"$repo/$printed"
+  fi
+  unset HERDR_ENV HERDR_WORKSPACE_ID
+  out="$(cd "$repo" && "$ROOT/skills/handoff/scripts/handoff-spawn" --info)"
+  printf '%s' "$out" | jq -e '.dirty == true' >/dev/null || fail "info dirty: $out"
+  printf '%s' "$out" | jq -e '.graphite == true' >/dev/null || fail "info graphite: $out"
+  printf '%s' "$out" | jq -e '.default_copy == "dirty"' >/dev/null || fail "info default_copy: $out"
+  printf '%s' "$out" | jq -e '.herdr == false' >/dev/null || fail "info herdr: $out"
+  printf '%s' "$out" | jq -e '.main_checkout == true' >/dev/null || fail "info main_checkout: $out"
+  printf 'PASS: --info reports dirty, graphite, and herdr without agent inspection\n'
+}
+
+test_graphite_rev_parse_is_not_enough
+test_copy_dirty_is_working_tree_not_index
+test_one_line_flattens_prompt
+test_usage
+test_prompt_text_prefixes_poteto_mode
+test_graphite_track_uses_resolved_config_path
+test_info_json_reports_graphite_and_dirty

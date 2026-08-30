@@ -75,14 +75,14 @@ pub fn resolve_plugin_root() -> Option<PathBuf> {
         .and_then(|exe| plugin_root_from(&exe))
 }
 
-pub fn open_file_editor(path: &Path) -> Result<(), String> {
+fn invoke_layout(action: &str, extra: &[String]) -> Result<(), String> {
     let plugin_root =
         resolve_plugin_root().ok_or_else(|| "agentic-layout plugin root not found".to_string())?;
     let layout = plugin_root.join("layout.sh");
     let mut cmd = Command::new("bash");
     cmd.arg(&layout);
-    cmd.arg("open-editor");
-    cmd.arg(path);
+    cmd.arg(action);
+    cmd.args(extra);
     cmd.env("HERDR_PLUGIN_ROOT", &plugin_root);
     cmd.env("HERDR_BIN_PATH", herdr_bin());
     if let Ok(ws) = std::env::var("HERDR_WORKSPACE_ID")
@@ -94,30 +94,21 @@ pub fn open_file_editor(path: &Path) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
-        Err(format!("open-editor failed for {}", path.display()))
+        Err(format!("{action} failed"))
     }
 }
 
+pub fn open_file_editor(path: &Path) -> Result<(), String> {
+    invoke_layout("open-editor", &[path.display().to_string()])
+        .map_err(|_| format!("open-editor failed for {}", path.display()))
+}
+
+pub fn open_review() -> Result<(), String> {
+    invoke_layout("select-review", &[])
+}
+
 pub fn refresh_review() -> Result<(), String> {
-    let plugin_root =
-        resolve_plugin_root().ok_or_else(|| "agentic-layout plugin root not found".to_string())?;
-    let layout = plugin_root.join("layout.sh");
-    let mut cmd = Command::new("bash");
-    cmd.arg(&layout);
-    cmd.arg("refresh-review");
-    cmd.env("HERDR_PLUGIN_ROOT", &plugin_root);
-    cmd.env("HERDR_BIN_PATH", herdr_bin());
-    if let Ok(ws) = std::env::var("HERDR_WORKSPACE_ID")
-        && !ws.is_empty()
-    {
-        cmd.env("HERDR_WORKSPACE_ID", ws);
-    }
-    let status = cmd.status().map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("refresh-review failed".into())
-    }
+    invoke_layout("refresh-review", &[])
 }
 
 #[cfg(test)]

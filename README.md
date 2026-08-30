@@ -1,6 +1,6 @@
 # agentic-dev-setup
 
-A ready-made [Herdr](https://herdr.dev) workspace for agentic coding: sticky agent on the left, review/shell in the center, files and git on the right — one layout per worktree, with Worktrunk hooks and a `handoff` skill so agents can spawn sibling worktrees for you.
+A ready-made [Herdr](https://herdr.dev) workspace for agentic coding: sticky agent on the left, shell in the center, files and git on the right — one layout per worktree, with Worktrunk hooks and a `handoff` skill so agents can spawn sibling worktrees for you. Review ([hunk](https://github.com/modem-dev/hunk)) opens on demand.
 
 Works on **Omarchy**, **Ubuntu/Debian**, and **macOS**.
 
@@ -32,14 +32,15 @@ Already running Herdr and only want the layout plugin? Jump to [Plugin only](#pl
 
 ## What you get
 
-- **Sticky-agent layout**: agent (~⅓) + review/shell center + files/git sidebar — agent stays put while you switch tabs
+- **Sticky-agent layout**: agent (~⅓) + shell center + files/git sidebar — agent stays put while you switch tabs; Review opens when needed
 - **In-repo layout plugin**: `agentic-dev.layout` (files/git sidebar is our fork of [alexarthurs/herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar))
-- **Review**: [hunk](https://github.com/modem-dev/hunk) (`hunk diff`; live watch on refresh)
+- **Review**: [hunk](https://github.com/modem-dev/hunk) on demand (`hunk diff --watch` in a Review tab; `prefix+2` or the `review` skill)
 - **Editor opens**: [fresh](https://github.com/sinelaw/fresh) from the sidebar tree
 - **Worktrunk plugin**: in-Herdr git worktree pickers (`prefix+shift+g/c/r`)
 - **Shell commands**: `dev`, `wtc`, `wts`, `wtd`, `d`, `t`
 - **worktrunk hooks**: auto-create/close Herdr workspaces on worktree start/remove
-- **`handoff` skill**: agents spawn a sibling worktree subspace, apply the layout, and start your agent with the task ([Agent Skills](https://agentskills.io/home))
+- **`handoff` skill**: any parent agent runs `handoff-spawn --info` then `handoff-spawn`; the child is always **cursor-agent** with `/poteto-mode` and the task as argv. Dirty main is copied as a working tree by default. The child is told to call **`review`** after a coherent unit of work.
+- **`review` skill**: open hunk, wait for human comments, close the Review tab
 - **Config**: `~/.config/agentic-dev/config.toml` (agent command; review/editor fixed to hunk + fresh)
 - **Omarchy/Linux**: fcitx5 hint hotkeys cleared; optional Hyprland binding patch
 - **Ubuntu/Debian**: apt + GitHub/mise installs when needed
@@ -50,16 +51,17 @@ One Herdr workspace per worktree. Switching tabs moves the agent pane with you �
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  workspace tabs   review   shell   editor           PREFIX  #h │
+│  workspace tabs   shell   review*  editor           PREFIX  #h │
 ├─────────────────────────┬────────────────────────────────────────┤
 │                         │                                        │
 │   agent                 │   active tool tab                      │
 │   (cursor / grok / pi / │                                        │
-│    codex / opencode /   │   review    → hunk diff (watch on refresh)   │
+│    codex / opencode /   │   shell     → terminal                 │
 │    claude)              │                                        │
+│                         │   review*   → hunk diff --watch        │
+│   sticky left pane      │     (created by prefix+2 / review skill)│
+│                         │                                        │
 │                         │   editor    → fresh                    │
-│   sticky left pane      │                                        │
-│                         │   shell     → terminal                 │
 │                         │                                        │
 │   prefix+1              │   prefix+2/3/4  or  Alt/Option+1/2/3   │
 └─────────────────────────┴────────────────────────────────────────┘
@@ -83,11 +85,11 @@ On install you'll pick the **agent** command. Review is always [hunk](https://gi
 
 Saved to `~/.config/agentic-dev/config.toml`. Change the agent later with `agentic-dev reconfigure`.
 
-### Handoff skill
+### Handoff and review skills
 
-The full installer deploys [`skills/handoff/`](skills/handoff/) to `~/.agents/skills/handoff`. Call it by name: **`handoff`**.
+The full installer deploys [`skills/handoff/`](skills/handoff/) and [`skills/review/`](skills/review/) to `~/.agents/skills/<id>`. Call them by name: **`handoff`**, **`review`**.
 
-From the main repo checkout inside Herdr, it opens a sibling worktree as a Herdr worktree-group child (subspace), applies the sticky-agent layout, starts your configured agent, and remembers where that work lives — so you can parallelize features without leaving the terminal.
+From the main repo checkout inside Herdr, `handoff` runs `scripts/handoff-spawn`: sibling worktree, dirty working-tree copy when main is dirty, sticky layout, **cursor-agent** with `/poteto-mode` and the original prompt. It prints `{label, path, branch}` and refuses to spawn if the child agent did not start.
 
 Agents that already discover `~/.agents/skills` (Cursor) need no extra link. Grok, Codex, OpenCode, Claude, and pi get a symlink into their agent-specific skills dir. Manual install:
 
@@ -100,14 +102,14 @@ npx skills add simoncrypta/agentic-dev-setup --skill handoff -g
 Use this when you already have Herdr set up and only want the **layout plugin** (`agentic-dev.layout`).
 
 ```bash
-herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.6
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.7
 ```
 
 | Comes with plugin install | Full install also adds |
 |---------------------------|------------------------|
-| Sticky agent + review/shell + files/git sidebar | Shell commands (`dev`, `wtc`, `wts`, `wtd`, `d`, `t`) |
+| Sticky agent + shell + files/git sidebar (Review on demand) | Shell commands (`dev`, `wtc`, `wts`, `wtd`, `d`, `t`) |
 | Layout actions (`create`, `apply`, tab focus, …) | `agentic-dev` CLI (`doctor`, `update`, `reconfigure`, `uninstall`) |
-| Sidebar fork of [herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar) (built on install) | `handoff` skill |
+| Sidebar fork of [herdr-sidebar](https://github.com/alexarthurs/herdr-sidebar) (built on install) | `handoff` and `review` skills |
 | | Worktrunk hooks + herdr-worktrunk plugin |
 | | Herdr keybindings / config templates |
 | | Dependency install (Herdr, worktrunk, [hunk](https://github.com/modem-dev/hunk), [fresh](https://github.com/sinelaw/fresh), agents) |
@@ -185,7 +187,7 @@ review = "hunk diff"
 editor = "fresh"
 ```
 
-Without config: agent defaults to `cursor-agent`, review to `hunk diff`, file opens to `fresh`. Use `refresh-review` (sidebar `v` or plugin action) for `hunk diff --watch`.
+Without config: agent defaults to `cursor-agent`, review to `hunk diff`, file opens to `fresh`. `select-review` / `prefix+2` launches `hunk diff --watch`. Use `refresh-review` (sidebar `v`) to restart watch.
 
 ## Shell commands
 
@@ -218,7 +220,7 @@ Prefix is **`Ctrl-Space`**, matching [Omarchy tmux](https://learn.omacom.io/2/th
 |-----|--------|
 | `prefix+d` | Apply / ensure sticky-agent layout |
 | `prefix+1` | Focus agent pane (recreates if crashed) |
-| `prefix+2` | Review tab (`hunk diff`; refresh for live watch) |
+| `prefix+2` | Open or focus Review (`hunk diff --watch`) |
 | `prefix+3` | Shell tab |
 | `prefix+4` | Files pane |
 | `Alt+1` / `Alt+2` / `Alt+3` (Option on macOS) | Same tabs in a **dev** workspace; otherwise focus tab 1/2/3 |
@@ -230,7 +232,7 @@ Prefix `1–4` no-op outside a valid dev-layout workspace. Only `prefix+d` / `cr
 | Key | Action |
 |-----|--------|
 | `prefix+c` | New tab |
-| `prefix+k` | Close file tab |
+| `prefix+k` | Close file tab (or Review; docks back to Shell) |
 | `prefix+shift+t` | Rename tab |
 | `prefix+n` / `Alt+Right` (Option on macOS) | Next tab |
 | `prefix+p` / `Alt+Left` (Option on macOS) | Previous tab |
@@ -336,7 +338,7 @@ Installed only if missing (mise first, then Omarchy `pkg add`, Homebrew, apt, pa
 - [herdr](https://herdr.dev) (`mise use -g herdr`, brew, or `curl -fsSL https://herdr.dev/install.sh | sh`)
 - Official [Herdr agent integration](https://herdr.dev/docs/integrations/) for the selected agent
 - git, worktrunk (`wt`), fzf, jq, lazygit
-- [hunk](https://github.com/modem-dev/hunk) (`hunk diff` in the review tab; `hunk diff --watch` on refresh)
+- [hunk](https://github.com/modem-dev/hunk) (>= 0.20.1; `hunk diff --watch` when Review opens)
 - [fresh](https://github.com/sinelaw/fresh) (sidebar file opens)
 - [grok](https://github.com/xai-org) (`mise use -g npm:@xai-official/grok`) when selected as the agent
 - pi (`mise use -g pi`) when selected as the agent
@@ -356,6 +358,7 @@ Installed only if missing (mise first, then Omarchy `pkg add`, Homebrew, apt, pa
 ~/.local/bin/agentic-dev
 ~/.local/share/agentic-dev/lib/  (for CLI)
 ~/.agents/skills/handoff/        handoff skill
+~/.agents/skills/review/         on-demand hunk review skill
 ```
 
 Shell rc gets a fenced marker block in `~/.bashrc` and/or `~/.zshrc`.

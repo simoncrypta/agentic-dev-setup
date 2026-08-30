@@ -1,0 +1,306 @@
+#!/usr/bin/env bash
+# One-command Herdr handoff: worktree + dirty copy + layout + cursor-agent prompt.
+# shellcheck shell=bash
+set -euo pipefail
+
+handoff_die() {
+  printf 'handoff-spawn: %s\n' "$*" >&2
+  exit 1
+}
+
+handoff_usage() {
+  cat >&2 <<'EOF'
+usage: handoff-spawn --info
+       handoff-spawn <branch> [--dirty|--clean] [--plan] [--] [prompt...]
+
+  --info    print JSON facts (herdr, main_checkout, dirty, graphite, …) and exit
+  --dirty   copy uncommitted main changes into the sibling as a working tree
+            (default when main is dirty)
+  --clean   HEAD only; leave uncommitted files on main
+  --plan    add "Plan/design only; do not implement yet."
+
+Read the original user prompt from remaining args or stdin.
+EOF
+  exit 2
+}
+
+handoff_realpath() {
+  local path="$1"
+  (cd "$path" 2>/dev/null && pwd -P) || printf '%s' "$path"
+}
+
+handoff_git_main() {
+  git -C "$1" worktree list --porcelain 2>/dev/null \
+    | awk '/^worktree / { print substr($0, 10); exit }'
+}
+
+handoff_is_main_checkout() {
+  local cwd main
+  cwd="$(handoff_realpath "$1")"
+  main="$(handoff_git_main "$1")"
+  [[ -n "$main" ]] || return 1
+  [[ "$cwd" == "$(handoff_realpath "$main")" ]]
+}
+
+handoff_main_is_dirty() {
+  [[ -n "$(git -C "$1" status --porcelain --untracked-files=all 2>/dev/null)" ]]
+}
+
+handoff_graphite_config() {
+  local root="$1" cfg
+  cfg="$(git -C "$root" rev-parse --git-path .graphite_repo_config 2>/dev/null)" || return 1
+  [[ -n "$cfg" ]] || return 1
+  [[ "$cfg" == /* ]] || cfg="$root/$cfg"
+  [[ -f "$cfg" ]] || return 1
+  printf '%s' "$cfg"
+}
+
+handoff_is_graphite() {
+  handoff_graphite_config "$1" >/dev/null
+}
+
+# Copy main's uncommitted tracked+untracked files into sibling as a working
+# tree. Never git-add. After this: git diff --cached is empty; git diff HEAD
+# matches main's dirty tracked files; untracked files exist on disk only.
+handoff_copy_dirty() {
+  local main="$1" sibling="$2" patch rel dest
+  [[ -d "$main" && -d "$sibling" ]] || return 1
+  patch="$(mktemp)"
+  git -C "$main" diff HEAD --binary >"$patch" || true
+  if [[ -s "$patch" ]]; then
+    git -C "$sibling" apply --whitespace=nowarn "$patch" \
+      || handoff_die "git apply of dirty working tree failed"
+  fi
+  rm -f "$patch"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    dest="$sibling/$rel"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$main/$rel" "$dest"
+  done < <(git -C "$main" ls-files --others --exclude-standard)
+}
+
+handoff_track_graphite() {
+  local sibling="$1" cfg trunk
+  cfg="$(handoff_graphite_config "$sibling")" || return 0
+  command -v gt >/dev/null 2>&1 || return 0
+  if gt --cwd "$sibling" parent >/dev/null 2>&1; then
+    return 0
+  fi
+  trunk="$(jq -r '.trunk // "main"' "$cfg" 2>/dev/null || true)"
+  trunk="${trunk:-main}"
+  gt --cwd "$sibling" track --parent "$trunk" --no-interactive \
+    || gt --cwd "$sibling" track --force --no-interactive \
+    || handoff_die "gt track failed for $sibling"
+}
+
+handoff_sibling_path() {
+  local main="$1" branch="$2" path
+  path="$(git -C "$main" worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
+    /^worktree / { p = substr($0, 10) }
+    /^branch / && $2 == b { print p; exit }
+  ')"
+  if [[ -n "$path" && -d "$path" ]]; then
+    printf '%s' "$path"
+    return 0
+  fi
+  path="${main}.${branch}"
+  [[ -d "$path" ]] || return 1
+  printf '%s' "$path"
+}
+
+handoff_one_line() {
+  printf '%s' "$1" | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//'
+}
+
+handoff_state_dir() {
+  printf '%s/agentic-dev' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+handoff_remember() {
+  local dir file
+  dir="$(handoff_state_dir)"
+  mkdir -p "$dir"
+  file="$dir/handoffs.jsonl"
+  printf '%s\n' "$1" >>"$file"
+}
+
+handoff_prompt_text() {
+  local body="$1"
+  if [[ "$body" == /poteto-mode* ]]; then
+    printf '%s' "$body"
+    return 0
+  fi
+  printf '/poteto-mode\n\n%s' "$body"
+}
+
+handoff_info_json() {
+  local cwd branch helper default_copy
+  local herdr=0 main_ok=0 dirty=0 graphite=0 helper_present=0
+  cwd="$(handoff_realpath "$PWD")"
+  [[ "${HERDR_ENV:-}" == 1 ]] && herdr=1
+  if command -v git >/dev/null 2>&1 && handoff_is_main_checkout "$cwd"; then
+    main_ok=1
+  fi
+  if command -v git >/dev/null 2>&1 && handoff_main_is_dirty "$cwd"; then
+    dirty=1
+  fi
+  if command -v git >/dev/null 2>&1 && handoff_is_graphite "$cwd"; then
+    graphite=1
+  fi
+  branch="$(git -C "$cwd" branch --show-current 2>/dev/null || true)"
+  helper="${HOME}/.config/worktrunk/herdr-layout.sh"
+  [[ -f "$helper" ]] && helper_present=1
+  if [[ "$dirty" -eq 1 ]]; then
+    default_copy="dirty"
+  else
+    default_copy="clean"
+  fi
+  jq -nc \
+    --arg cwd "$cwd" \
+    --arg branch "$branch" \
+    --arg default_copy "$default_copy" \
+    --arg helper "$helper" \
+    --arg workspace "${HERDR_WORKSPACE_ID:-}" \
+    --argjson herdr "$([[ "$herdr" -eq 1 ]] && echo true || echo false)" \
+    --argjson main_checkout "$([[ "$main_ok" -eq 1 ]] && echo true || echo false)" \
+    --argjson dirty "$([[ "$dirty" -eq 1 ]] && echo true || echo false)" \
+    --argjson graphite "$([[ "$graphite" -eq 1 ]] && echo true || echo false)" \
+    --argjson helper_present "$([[ "$helper_present" -eq 1 ]] && echo true || echo false)" \
+    '{
+      herdr:$herdr,
+      main_checkout:$main_checkout,
+      cwd:$cwd,
+      branch:$branch,
+      dirty:$dirty,
+      graphite:$graphite,
+      default_copy:$default_copy,
+      helper:$helper,
+      helper_present:$helper_present,
+      workspace:$workspace
+    }'
+}
+
+handoff_spawn_main() {
+  local branch="" dirty="auto" plan=0 prompt="" main sibling label intro graphite=0 copied=0
+  local helper="$HOME/.config/worktrunk/herdr-layout.sh"
+  local json task parent_ws file body info=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help) handoff_usage ;;
+      --info) info=1; shift ;;
+      --dirty) dirty=1; shift ;;
+      --clean) dirty=0; shift ;;
+      --plan) plan=1; shift ;;
+      --) shift; break ;;
+      -*) handoff_usage ;;
+      *)
+        if [[ -z "$branch" ]]; then
+          branch="$1"
+          shift
+        else
+          break
+        fi
+        ;;
+    esac
+  done
+
+  if [[ "$info" -eq 1 ]]; then
+    command -v jq >/dev/null 2>&1 || handoff_die "jq is required"
+    handoff_info_json
+    printf '\n'
+    return 0
+  fi
+
+  [[ -n "$branch" ]] || handoff_usage
+  if [[ $# -gt 0 ]]; then
+    prompt="$*"
+  else
+    prompt="$(cat)"
+  fi
+  [[ -n "$prompt" ]] || handoff_die "empty prompt (pass args or stdin)"
+
+  [[ "${HERDR_ENV:-}" == 1 ]] || handoff_die "not inside a Herdr pane (HERDR_ENV!=1)"
+  parent_ws="${HERDR_WORKSPACE_ID:-}"
+  command -v git >/dev/null 2>&1 || handoff_die "git is required"
+  command -v wt >/dev/null 2>&1 || handoff_die "wt (worktrunk) is required"
+  command -v jq >/dev/null 2>&1 || handoff_die "jq is required"
+  [[ -f "$helper" ]] || handoff_die "missing $helper"
+
+  main="$(handoff_realpath "$PWD")"
+  handoff_is_main_checkout "$main" \
+    || handoff_die "cwd is not the main git checkout; refuse to spawn from a linked worktree"
+
+  if [[ "$dirty" == "auto" ]]; then
+    if handoff_main_is_dirty "$main"; then
+      dirty=1
+    else
+      dirty=0
+    fi
+  fi
+
+  # shellcheck disable=SC1090
+  source "$helper"
+
+  if [[ -n "$parent_ws" ]]; then
+    export WT_HERDR_KEEP_FOCUS="$parent_ws"
+  fi
+  wt switch --create "$branch" --no-cd \
+    || handoff_die "wt switch --create $branch failed"
+  _wt_herdr_keep_user_focus "$parent_ws"
+  sibling="$(handoff_sibling_path "$main" "$branch")" \
+    || handoff_die "could not resolve sibling worktree for $branch"
+  sibling="$(handoff_realpath "$sibling")"
+
+  if [[ "$dirty" == 1 ]]; then
+    if handoff_main_is_dirty "$main"; then
+      handoff_copy_dirty "$main" "$sibling"
+      copied=1
+    fi
+  fi
+
+  if handoff_is_graphite "$sibling"; then
+    graphite=1
+    handoff_track_graphite "$sibling"
+  fi
+
+  label="$(_wt_generate_session_name "$sibling")"
+
+  intro="$(printf 'You are in linked worktree %s (branch %s). Stay in this checkout.\nWhen a coherent unit of work is ready (tests pass, before commit/PR), load ~/.agents/skills/review/SKILL.md and follow it: open Review, wait for hunk comments, address them, close Review.' \
+    "$sibling" "$branch")"
+  if [[ "$plan" -eq 1 ]]; then
+    intro="$(printf '%s\nPlan/design only; do not implement yet.' "$intro")"
+  fi
+  if [[ "$graphite" -eq 1 ]]; then
+    intro="$(printf '%s\nUse gt, not raw git commit/push, unless asked.' "$intro")"
+  fi
+
+  mkdir -p "$(handoff_state_dir)"
+  file="$(handoff_state_dir)/handoff-prompt-${branch}.txt"
+  body="$(printf '%s\n\n%s' "$intro" "$prompt")"
+  printf '%s' "$(handoff_prompt_text "$body")" >"$file"
+
+  WT_HERDR_KEEP_FOCUS="$parent_ws" \
+    WT_HERDR_AGENT_CMD=cursor-agent \
+    WT_HERDR_AGENT_PROMPT_FILE="$file" \
+    wt_herdr_start_agent "$label" "$sibling" \
+    || handoff_die "child agent did not start with the task"
+
+  task="$(handoff_one_line "$prompt")"
+  json="$(jq -nc \
+    --arg label "$label" \
+    --arg path "$sibling" \
+    --arg branch "$branch" \
+    --arg task "$task" \
+    --argjson agent_started true \
+    --argjson dirty_copied "$([[ "$copied" -eq 1 ]] && echo true || echo false)" \
+    --argjson graphite "$([[ "$graphite" -eq 1 ]] && echo true || echo false)" \
+    '{ok:true,label:$label,path:$path,branch:$branch,task:$task,agent_started:$agent_started,dirty_copied:$dirty_copied,graphite:$graphite}')"
+  handoff_remember "$json"
+  printf '%s\n' "$json"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  handoff_spawn_main "$@"
+fi

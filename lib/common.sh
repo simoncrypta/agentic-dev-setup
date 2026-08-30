@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.3.6}"
+AGENTIC_DEV_VERSION="${AGENTIC_DEV_VERSION:-0.3.7}"
 AGENTIC_DEV_MARKER_START="# >>> agentic-dev-setup"
 AGENTIC_DEV_MARKER_END="# <<< agentic-dev-setup"
 
@@ -18,9 +18,15 @@ LOCAL_BIN="${HOME}/.local/bin"
 PLUGIN_ID="agentic-dev.layout"
 LEGACY_LAYOUT_PLUGIN_ID="agentic-dev.dev-layout"
 # Canonical skill install per Agent Skills (https://agentskills.io): ~/.agents/skills.
-AGENTIC_DEV_SKILL_ID="handoff"
 AGENTS_SKILLS_DIR="${HOME}/.agents/skills"
+AGENTIC_DEV_SKILL_IDS=(handoff review)
+# First skill kept as a convenience alias (tests, summary, uninstall prompt).
+AGENTIC_DEV_SKILL_ID="${AGENTIC_DEV_SKILL_IDS[0]}"
 AGENTIC_DEV_SKILL_DIR="${AGENTS_SKILLS_DIR}/${AGENTIC_DEV_SKILL_ID}"
+
+skill_canonical_dir() {
+  printf '%s/%s' "$AGENTS_SKILLS_DIR" "$1"
+}
 AGENTIC_DEV_SHARE_DIR="${HOME}/.local/share/agentic-dev"
 AGENTIC_DEV_SOURCE_PATH_FILE="${AGENTIC_DEV_SHARE_DIR}/source-path"
 

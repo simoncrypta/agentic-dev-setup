@@ -251,7 +251,8 @@ _wt_herdr_invoke_plugin() {
   WT_HERDR_LABEL="$label" \
     WT_HERDR_WORKDIR="$workdir" \
     WT_HERDR_NO_ATTACH="${WT_HERDR_NO_ATTACH:-}" \
-    WT_HERDR_AGENT_PROMPT="${WT_HERDR_AGENT_PROMPT:-}" \
+    WT_HERDR_AGENT_CMD="${WT_HERDR_AGENT_CMD:-}" \
+    WT_HERDR_AGENT_PROMPT_FILE="${WT_HERDR_AGENT_PROMPT_FILE:-}" \
     HERDR_WORKSPACE_ID="$workspace_id" \
     HERDR_PLUGIN_ROOT="$root" \
     HERDR_BIN_PATH="${HERDR_BIN_PATH:-$HERDR}" \
@@ -268,13 +269,39 @@ wt_herdr_layout_create() {
     return 1
   }
 
-  keep_focus="$(_wt_herdr_focused_workspace_id)"
+  # Prefer the caller's workspace (handoff-spawn sets WT_HERDR_KEEP_FOCUS to
+  # the parent pane's HERDR_WORKSPACE_ID). "currently focused" is already the
+  # child if wt/post-start stole focus.
+  keep_focus="${WT_HERDR_KEEP_FOCUS:-$(_wt_herdr_focused_workspace_id)}"
   workspace_id="$(_wt_herdr_resolve_workspace "$label" "$workdir")" || {
     _wt_herdr_keep_user_focus "$keep_focus"
     return 1
   }
   if ! WT_HERDR_NO_ATTACH=1 _wt_herdr_invoke_plugin create "$workspace_id" "$label" "$workdir"; then
     echo "Failed to create $PLUGIN_ID layout for workspace $workspace_id" >&2
+    rc=1
+  fi
+  _wt_herdr_keep_user_focus "$keep_focus"
+  return "$rc"
+}
+
+wt_herdr_start_agent() {
+  local label="$1"
+  local workdir="$2"
+  local workspace_id keep_focus rc=0
+
+  _wt_herdr_ensure_server || {
+    echo "Herdr server is not running. Start it with: herdr" >&2
+    return 1
+  }
+
+  keep_focus="${WT_HERDR_KEEP_FOCUS:-$(_wt_herdr_focused_workspace_id)}"
+  workspace_id="$(_wt_herdr_resolve_workspace "$label" "$workdir")" || {
+    _wt_herdr_keep_user_focus "$keep_focus"
+    return 1
+  }
+  if ! WT_HERDR_NO_ATTACH=1 _wt_herdr_invoke_plugin start-agent "$workspace_id" "$label" "$workdir"; then
+    echo "Failed to start agent in workspace $workspace_id" >&2
     rc=1
   fi
   _wt_herdr_keep_user_focus "$keep_focus"

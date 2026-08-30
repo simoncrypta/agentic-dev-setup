@@ -443,6 +443,8 @@ struct ClickZones {
     message: Rect,
     sparkle: Rect,
     button: Rect,
+    /// Review-with-hunk control next to Commit (zero-sized when hidden).
+    review: Rect,
     /// The Sync Changes row (zero-sized when hidden).
     sync: Rect,
 }
@@ -1168,11 +1170,7 @@ impl App {
             KeyCode::Char('s') => self.open_settings(),
             KeyCode::Char('S') if self.ctx.git_actions() => self.sync_changes(),
             KeyCode::Char('o') if self.ctx.git_actions() => self.open_selected_diff(),
-            KeyCode::Char('v') if self.ctx.uses_external_editor() => {
-                if let Err(e) = herdr_sidebar::embed::refresh_review() {
-                    self.flash = Some((e, true));
-                }
-            }
+            KeyCode::Char('v') if self.ctx.uses_external_editor() => self.open_hunk_review(),
             KeyCode::Char('m') => self.open_menu_for_selection(),
             KeyCode::Char('1') => return self.switch_to(View::Explorer),
             KeyCode::Char('2') => return self.switch_to(View::SourceControl),
@@ -1246,6 +1244,10 @@ impl App {
             self.commit();
             return None;
         }
+        if hits(z.review, x, y) {
+            self.open_hunk_review();
+            return None;
+        }
         if hits(z.sync, x, y) {
             self.sync_changes();
             return None;
@@ -1308,8 +1310,13 @@ impl App {
                 }
                 Row::Commit(r) => {
                     // Only the button line commits — not its padding rows.
+                    // Right half is Review when the layout plugin is embedded.
                     if line == 1 {
-                        self.commit_repo(r);
+                        if self.hits_review_half(x) {
+                            self.open_hunk_review();
+                        } else {
+                            self.commit_repo(r);
+                        }
                     }
                 }
                 Row::RepoHeader(r) => {
@@ -2592,6 +2599,13 @@ impl App {
         self.syncing = Some(rx);
     }
 
+    fn open_hunk_review(&mut self) {
+        match herdr_sidebar::embed::open_review() {
+            Ok(()) => self.flash = Some(("Opened hunk review".into(), false)),
+            Err(e) => self.flash = Some((e, true)),
+        }
+    }
+
     fn commit(&mut self) {
         self.commit_repo(self.active);
     }
@@ -2753,6 +2767,7 @@ impl App {
             self.zones.message = Rect::default();
             self.zones.sparkle = Rect::default();
             self.zones.button = Rect::default();
+            self.zones.review = Rect::default();
             self.zones.sync = Rect::default();
         }
         self.draw_list(frame, list);
@@ -2962,25 +2977,40 @@ impl App {
         }
     }
 
+    fn hits_review_half(&self, x: u16) -> bool {
+        self.ctx.uses_external_editor() && x >= self.last_width / 2
+    }
+
     fn draw_button(&mut self, frame: &mut Frame, area: Rect) {
         let focused = self.focus == Focus::Commit;
-        let bg = if focused {
-            BUTTON_BLUE_FOCUS
-        } else {
-            BUTTON_BLUE
-        };
-        let mut style = Style::default().bg(bg).fg(Color::White);
-        if focused {
-            style = style.add_modifier(Modifier::BOLD);
-        }
-        // A breathing row above and below, like the inline variant.
+        let with_review = self.ctx.uses_external_editor();
         let inner = if area.height >= 3 {
             Rect::new(area.x, area.y + 1, area.width, 1)
         } else {
             area
         };
-        frame.render_widget(Paragraph::new("✓ Commit").centered().style(style), inner);
-        self.zones.button = inner;
+        frame.render_widget(
+            Paragraph::new(commit_review_line(
+                true,
+                focused,
+                inner.width as usize,
+                with_review,
+            )),
+            inner,
+        );
+        if with_review && inner.width >= 16 {
+            let commit_w = inner.width / 2;
+            self.zones.button = Rect::new(inner.x, inner.y, commit_w, inner.height);
+            self.zones.review = Rect::new(
+                inner.x + commit_w,
+                inner.y,
+                inner.width.saturating_sub(commit_w),
+                inner.height,
+            );
+        } else {
+            self.zones.button = inner;
+            self.zones.review = Rect::default();
+        }
     }
 
     /// The Sync Changes label, or `None` while there is nothing to sync
@@ -3080,6 +3110,7 @@ impl App {
                         r == active,
                         r == active && self.focus == Focus::Commit,
                         width,
+                        self.ctx.uses_external_editor(),
                     ),
                     Row::StagedHeader(r) => section_item(
                         "Staged Changes",
@@ -3218,6 +3249,9 @@ impl App {
             ("r", "refresh"),
             ("q", "quit"),
         ];
+        if self.ctx.uses_external_editor() {
+            hints.insert(6, ("v", "review"));
+        }
         if self.merged() {
             hints.extend([("1", "files"), ("2", "git")]);
         }
@@ -3460,33 +3494,76 @@ fn message_box_item(
     ListItem::new(lines)
 }
 
-/// A repo's inline ✓ Commit button with the VS Code dropdown chevron at its
-/// right end; only the active repo's button is fully lit.
-fn commit_button_item(active: bool, focused: bool, width: usize) -> ListItem<'static> {
+fn commit_style(active: bool, focused: bool) -> Style {
     let (bg, fg) = match (active, focused) {
         (true, true) => (BUTTON_BLUE_FOCUS, Color::White),
         (true, false) => (BUTTON_BLUE, Color::White),
         (false, _) => (Color::Rgb(0x24, 0x45, 0x5c), Color::Rgb(0x9a, 0xb2, 0xc2)),
     };
-    let label = "✓ Commit";
-    let body_w = width.saturating_sub(2);
-    let left_pad = body_w.saturating_sub(label.chars().count()) / 2;
-    let right_pad = body_w.saturating_sub(left_pad + label.chars().count());
     let mut style = Style::default().bg(bg).fg(fg);
     if focused {
         style = style.add_modifier(Modifier::BOLD);
     }
+    style
+}
+
+fn review_button_style() -> Style {
+    Style::default()
+        .bg(Color::Rgb(0x3a, 0x3d, 0x41))
+        .fg(Color::White)
+}
+
+fn commit_review_line(
+    active: bool,
+    focused: bool,
+    width: usize,
+    with_review: bool,
+) -> Line<'static> {
+    let style = commit_style(active, focused);
+    if with_review && width >= 16 {
+        let commit_w = width / 2;
+        let review_w = width.saturating_sub(commit_w);
+        return Line::from(vec![
+            Span::styled(pad_center("✓ Commit", commit_w), style),
+            Span::styled(pad_center("Review", review_w), review_button_style()),
+        ]);
+    }
+    let label = "✓ Commit";
+    let body_w = width.saturating_sub(2);
+    let left_pad = body_w.saturating_sub(label.chars().count()) / 2;
+    let right_pad = body_w.saturating_sub(left_pad + label.chars().count());
+    Line::from(vec![
+        Span::styled(
+            format!("{}{label}{}", " ".repeat(left_pad), " ".repeat(right_pad)),
+            style,
+        ),
+        Span::styled("│∨", style.dim()),
+    ])
+}
+
+/// A repo's inline ✓ Commit button; only the active repo's button is fully lit.
+/// When `with_review`, the right half is Review (same control as the header).
+fn commit_button_item(
+    active: bool,
+    focused: bool,
+    width: usize,
+    with_review: bool,
+) -> ListItem<'static> {
     ListItem::new(vec![
         Line::default(),
-        Line::from(vec![
-            Span::styled(
-                format!("{}{label}{}", " ".repeat(left_pad), " ".repeat(right_pad)),
-                style,
-            ),
-            Span::styled("│∨", style.dim()),
-        ]),
+        commit_review_line(active, focused, width, with_review),
         Line::default(),
     ])
+}
+
+fn pad_center(label: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let n = label.chars().count().min(width);
+    let left = width.saturating_sub(n) / 2;
+    let right = width.saturating_sub(left + n);
+    format!("{}{label}{}", " ".repeat(left), " ".repeat(right))
 }
 
 /// A collapsible section header; `count` renders as a right-aligned badge

@@ -7,7 +7,7 @@ S="{{ branch | capitalize }}_{{ repo | capitalize }}"
 W="{{ worktree_path }}"
 
 source "$HOME/.config/worktrunk/herdr-layout.sh"
-# Layout only — never inherit a handoff prompt from the parent agent shell.
+# Layout only — agent pane stays a shell. Handoff starts the agent with the task.
 unset WT_HERDR_AGENT_PROMPT
 wt_herdr_layout_create "$S" "$W"
 

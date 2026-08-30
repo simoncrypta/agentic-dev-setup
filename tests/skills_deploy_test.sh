@@ -54,8 +54,12 @@ test_deploy_agents_path_for_cursor() {
   grep -q '^name: handoff$' "$AGENTIC_DEV_SKILL_DIR/SKILL.md" || fail "skill frontmatter missing"
   [[ -f "$AGENTIC_DEV_SKILL_DIR/resources/handoff.md" ]] || fail "resource handoff.md missing"
   [[ -f "$AGENTIC_DEV_SKILL_DIR/MANIFEST" ]] || fail "MANIFEST missing from deploy_tree"
+  [[ -x "$AGENTIC_DEV_SKILL_DIR/scripts/handoff-spawn" ]] || fail "handoff-spawn missing or not executable"
+  [[ -f "$AGENTS_SKILLS_DIR/review/SKILL.md" ]] || fail "canonical review skill missing"
+  grep -q '^name: review$' "$AGENTS_SKILLS_DIR/review/SKILL.md" || fail "review frontmatter missing"
+  [[ -f "$AGENTS_SKILLS_DIR/review/scripts/wait-comments.sh" ]] || fail "wait-comments helper missing"
   [[ ! -e "$HOME/.cursor/skills/handoff" ]] || fail "cursor should use ~/.agents/skills only"
-  printf 'PASS: deploy_skills installs ~/.agents/handoff for cursor-agent\n'
+  printf 'PASS: deploy_skills installs ~/.agents/handoff and review for cursor-agent\n'
 }
 
 test_reconfigure_scrubs_orphan_extra_link() {
@@ -97,10 +101,12 @@ test_grok_gets_extra_skill_link() {
   deploy_skills >/dev/null
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for grok"
   [[ -L "$HOME/.grok/skills/handoff" ]] || fail "grok skill symlink missing"
+  [[ -L "$HOME/.grok/skills/review" ]] || fail "grok review symlink missing"
   [[ ! -e "$HOME/.codex/skills/handoff" ]] || fail "grok should not create a codex link"
   write_agent_config cursor-agent
   deploy_skills >/dev/null
   [[ ! -e "$HOME/.grok/skills/handoff" ]] || fail "grok orphan link should be scrubbed on reconfigure"
+  [[ ! -e "$HOME/.grok/skills/review" ]] || fail "grok review orphan link should be scrubbed on reconfigure"
   printf 'PASS: deploy_skills links ~/.grok/skills/handoff for grok\n'
 }
 
@@ -110,10 +116,23 @@ test_pi_gets_extra_skill_link() {
   deploy_skills >/dev/null
   [[ -f "$AGENTIC_DEV_SKILL_DIR/SKILL.md" ]] || fail "canonical skill missing for pi"
   [[ -L "$HOME/.pi/agent/skills/handoff" ]] || fail "pi skill symlink missing"
+  [[ -L "$HOME/.pi/agent/skills/review" ]] || fail "pi review symlink missing"
   write_agent_config cursor-agent
   deploy_skills >/dev/null
   [[ ! -e "$HOME/.pi/agent/skills/handoff" ]] || fail "pi orphan link should be scrubbed on reconfigure"
   printf 'PASS: deploy_skills links ~/.pi/agent/skills/handoff for pi\n'
+}
+
+test_handoff_spawn_is_the_recipe() {
+  grep -q 'scripts/handoff-spawn' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must tell the parent to run handoff-spawn"
+  grep -q 'handoff-spawn" --info' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must tell the parent to run --info"
+  grep -q 'Do not inspect git, Graphite, Herdr, or worktrees yourself' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must not keep the glued multi-tool recipe"
+  grep -q 'handoff-spawn' "$ROOT/skills/handoff/MANIFEST" \
+    || fail "MANIFEST must list handoff-spawn"
+  printf 'PASS: handoff skill recipe is the spawn script\n'
 }
 
 test_deploy_agents_path_for_cursor
@@ -122,3 +141,4 @@ test_preserve_foreign_skill_path
 test_custom_agent_canonical_only
 test_grok_gets_extra_skill_link
 test_pi_gets_extra_skill_link
+test_handoff_spawn_is_the_recipe

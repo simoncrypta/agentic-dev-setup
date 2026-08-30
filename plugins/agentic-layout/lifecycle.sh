@@ -31,7 +31,7 @@ _pane_has_sidebar_token() {
 _pane_run_login() {
   local pane="$1" cmd="$2" sh
   sh="$(_login_shell)"
-  _herdr_json pane run "$pane" "$(printf '%q' "$sh") -li -c $(printf '%q' "$cmd")" >/dev/null || true
+  _herdr_json pane run "$pane" "$(printf '%q' "$sh") -li -c $(printf '%q' "$cmd")" >/dev/null
 }
 
 _pane_run_sidebar() {
@@ -68,9 +68,9 @@ _restart_pane_cmd() {
   local pane="$1" cmd="$2"
   [[ -n "$pane" && -n "$cmd" ]] || return 0
   if _pane_is_shell "$pane"; then
-    _pane_run_login "$pane" "$cmd"
+    _pane_run_login "$pane" "$cmd" || true
   else
-    _herdr_json pane run "$pane" "$cmd" >/dev/null 2>&1 || _pane_run_login "$pane" "$cmd"
+    _herdr_json pane run "$pane" "$cmd" >/dev/null 2>&1 || _pane_run_login "$pane" "$cmd" || true
   fi
 }
 
@@ -78,7 +78,7 @@ _ensure_pane_process() {
   local pane="$1" cmd="$2"
   [[ -n "$pane" && -n "$cmd" ]] || return 0
   if _pane_is_shell "$pane"; then
-    _pane_run_login "$pane" "$cmd"
+    _pane_run_login "$pane" "$cmd" || true
   fi
 }
 
@@ -112,11 +112,85 @@ _rename_pane() {
   _herdr_json pane rename "$pane" "$(_pane_label "$role")" >/dev/null 2>&1 || true
 }
 
-_maybe_start_agent_pane() {
-  local pane="$1" start_agent="${2:-1}"
-  [[ "$start_agent" == "1" && -n "$pane" ]] || return 0
-  _pane_is_shell "$pane" || return 0
-  _herdr_json pane run "$pane" "$(_agent_cmd)" >/dev/null || true
+_reset_agent_pane_to_shell() {
+  local pane="$1" json pgid shell_pid pid waited=0
+  [[ -n "$pane" ]] || return 1
+  json="$(_herdr_json pane process-info --pane "$pane")" || true
+  pgid="$(printf '%s' "${json:-}" | _jq '.result.process_info.foreground_process_group_id // empty' 2>/dev/null || true)"
+  shell_pid="$(printf '%s' "${json:-}" | _jq '.result.process_info.shell_pid // empty' 2>/dev/null || true)"
+  if [[ "$pgid" =~ ^[1-9][0-9]*$ ]] && (( pgid > 1 )) && [[ "$pgid" != "$shell_pid" ]]; then
+    kill -- -"$pgid" 2>/dev/null || kill "$pgid" 2>/dev/null || true
+  fi
+  while IFS= read -r pid; do
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || continue
+    [[ "$pid" == "$shell_pid" ]] && continue
+    (( pid > 1 )) || continue
+    kill "$pid" 2>/dev/null || true
+  done < <(printf '%s' "${json:-}" | jq -r '.result.process_info.foreground_processes[]?.pid // empty' 2>/dev/null || true)
+  while ! _pane_is_shell "$pane"; do
+    if (( waited >= 50 )); then
+      echo "agentic-layout: timed out waiting for agent pane $pane to return to a shell" >&2
+      return 1
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+}
+
+# herdr pane run types the command + Enter. A multiline prompt would submit
+# early, so handoff writes the prompt to a file and we exec one argv.
+_launch_agent_on_pane() {
+  local pane="$1" agent file cmd
+  [[ -n "$pane" ]] || return 1
+  agent="${WT_HERDR_AGENT_CMD:-$(_agent_cmd)}"
+  file="${WT_HERDR_AGENT_PROMPT_FILE:-}"
+  if [[ -n "$file" ]]; then
+    [[ -f "$file" ]] || {
+      echo "agentic-layout: prompt file not found: $file" >&2
+      return 1
+    }
+    cmd="$(printf 'p=$(cat -- %q) && rm -f %q && exec %q -- "$p"' "$file" "$file" "$agent")"
+    _pane_run_login "$pane" "$cmd"
+    return
+  fi
+  _herdr_json pane run "$pane" "$agent" >/dev/null
+}
+
+_wait_agent_running() {
+  local pane="$1" waited=0
+  [[ -n "$pane" ]] || return 1
+  while (( waited < 50 )); do
+    if ! _pane_is_shell "$pane"; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  echo "agentic-layout: agent did not start on pane $pane" >&2
+  return 1
+}
+
+# start-agent action: replace a live agent only when a prompt file is set
+# (re-handoff). Unprompted start is a no-op if the pane is already an agent.
+_start_agent() {
+  local state pane
+  state="$(_dev_state)" || state="$(_layout_ensure)"
+  [[ -n "$state" ]] || return 1
+  pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  if ! _pane_exists "$pane"; then
+    state="$(_layout_ensure)"
+    pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
+  fi
+  [[ -n "$pane" ]] || return 1
+  if ! _pane_is_shell "$pane"; then
+    if [[ -n "${WT_HERDR_AGENT_PROMPT_FILE:-}" ]]; then
+      _reset_agent_pane_to_shell "$pane" || return 1
+    else
+      return 0
+    fi
+  fi
+  _launch_agent_on_pane "$pane" || return 1
+  _wait_agent_running "$pane"
 }
 
 _ensure_pane_live() {
@@ -161,7 +235,7 @@ _refresh_pane_identity() {
 _recover_workspace_panes() {
   local workspace_id="$1" state="$2"
   local now last healed=0
-  local shell_pane review_pane sidebar_pane
+  local shell_pane sidebar_pane
   [[ -n "$workspace_id" && -n "$state" ]] || {
     printf '%s' "${state:-{}}"
     return 0
@@ -173,12 +247,8 @@ _recover_workspace_panes() {
     return 0
   fi
   shell_pane="$(printf '%s' "$state" | _jq '.shell_pane_id // empty')"
-  review_pane="$(printf '%s' "$state" | _jq '.review_pane_id // empty')"
   sidebar_pane="$(printf '%s' "$state" | _jq '.sidebar_pane_id // empty')"
   if _ensure_pane_live "$workspace_id" "$shell_pane" center_shell; then
-    healed=1
-  fi
-  if _ensure_pane_live "$workspace_id" "$review_pane" center_review; then
     healed=1
   fi
   if _ensure_pane_live "$workspace_id" "$sidebar_pane" sidebar; then
@@ -210,10 +280,9 @@ _startup_one() {
   [[ "$live_status" -eq 0 ]] || return 0
   reconciled="$(_reconcile_live_state "$state")"
   reconciled="$(_recover_workspace_panes "$workspace_id" "$reconciled")"
-  if [[ -z "$(printf '%s' "$reconciled" | _jq '.sidebar_pane_id // empty')" ]] \
-    || [[ -z "$(printf '%s' "$reconciled" | _jq '.review_pane_id // empty')" ]]; then
+  if [[ -z "$(printf '%s' "$reconciled" | _jq '.sidebar_pane_id // empty')" ]]; then
     export HERDR_WORKSPACE_ID="$workspace_id"
-    WT_HERDR_NO_ATTACH=1 _layout_ensure 0 >/dev/null 2>&1 || true
+    WT_HERDR_NO_ATTACH=1 _layout_ensure >/dev/null 2>&1 || true
   fi
   if [[ "$reconciled" != "$state" ]]; then
     _state_save "$workspace_id" "$reconciled"

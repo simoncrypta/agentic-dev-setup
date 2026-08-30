@@ -28,16 +28,9 @@ Worktrunk will not run project hooks/aliases until the user approves them. In no
 
 ## Handoffs
 
-Inside Herdr, use the `handoff` skill recipe (`resources/handoff.md`): Worktrunk checkout + `WT_HERDR_AGENT_PROMPT` + `wt_herdr_layout_create`. Keep parent focus with `--no-focus` / `WT_HERDR_NO_ATTACH=1`. Remember `{label, path, branch, task}`.
-
-For parallel sub-agents in separate worktrees from a parent that cannot consume shell cd scripts:
-
-```bash
-# Prefer hooks ON for Graphite projects (project wt.toml may run `gt track`)
-wt switch --create <branch> --no-cd
-```
-
-Then open the sibling with `wt_herdr_layout_create` (see `resources/handoff.md`). Prefer letting hooks run when you want the Herdr subspace auto-created and Graphite tracking. Only add `--no-hooks` when you intentionally skip project hooks — then run `gt track` yourself if the repo is Graphite (see `resources/git-workflow.md`).
+Inside Herdr, run `scripts/handoff-spawn --info` then `handoff-spawn` (see
+`resources/handoff.md`). Do not assemble `wt switch` / layout create / start-agent
+yourself.
 
 ## Do not
 

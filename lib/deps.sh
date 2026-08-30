@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 
 HERDR_MIN_VERSION=0.7.5
+HUNK_MIN_VERSION=0.20.1
 GROK_MISE_SPEC="npm:@xai-official/grok"
 
 dep_present() {
@@ -551,13 +552,35 @@ install_dependencies() {
 
 _doctor_configured_bin() {
   local cmd="$1" role="$2"
+  local path
   [[ -n "$cmd" ]] || return 0
-  if dep_present "$cmd"; then
-    log "  ok  $cmd ($(command -v "$cmd")) (configured $role)"
-  else
+  if ! dep_present "$cmd"; then
     log "  missing  $cmd (configured $role command)"
     return 1
   fi
+  path="$(command -v "$cmd")"
+  log "  ok  $cmd ($path) (configured $role)"
+}
+
+_doctor_versioned_bin() {
+  local cmd="$1" min="$2" role="$3"
+  local path output found
+  [[ -n "$cmd" ]] || return 0
+  if ! dep_present "$cmd"; then
+    log "  missing  $cmd (configured $role command)"
+    return 1
+  fi
+  path="$(command -v "$cmd")"
+  output="$("$cmd" --version 2>/dev/null || true)"
+  if found="$(herdr_parse_version "$output")" && [[ -n "$found" ]]; then
+    if herdr_version_at_least "$found" "$min"; then
+      log "  ok  $cmd ($path; found $found, required >=$min) (configured $role)"
+      return 0
+    fi
+    log "  outdated  $cmd ($path; found $found, required >=$min) (configured $role)"
+    return 1
+  fi
+  log "  ok  $cmd ($path) (configured $role)"
 }
 
 doctor_dependencies() {
@@ -594,7 +617,7 @@ doctor_dependencies() {
       missing=$((missing + 1))
     fi
   done
-  _doctor_configured_bin hunk review || missing=$((missing + 1))
+  _doctor_versioned_bin hunk "$HUNK_MIN_VERSION" review || missing=$((missing + 1))
   _doctor_configured_bin fresh editor || missing=$((missing + 1))
   if declare -F read_agent_command >/dev/null; then
     local agent_cmd agent_bin target status_out status_line

@@ -101,33 +101,47 @@ doctor_helper() {
   return 0
 }
 
-doctor_skill() {
-  local missing=0 agent_cmd agent_skills_dir link src
-  if [[ ! -f "${AGENTIC_DEV_SKILL_DIR}/SKILL.md" ]]; then
-    log "  missing  skill $AGENTIC_DEV_SKILL_ID at $AGENTIC_DEV_SKILL_DIR"
-    missing=$((missing + 1))
-  elif ! src="$(_recorded_install_source)"; then
-    log "  unverified  skill $AGENTIC_DEV_SKILL_ID (no recorded install source)"
-    missing=$((missing + 1))
-  elif [[ -f "$src/skills/${AGENTIC_DEV_SKILL_ID}/SKILL.md" ]] \
-    && ! cmp -s "$src/skills/${AGENTIC_DEV_SKILL_ID}/SKILL.md" "${AGENTIC_DEV_SKILL_DIR}/SKILL.md"; then
-    log "  stale  skill $AGENTIC_DEV_SKILL_ID (run ./install.sh from $src)"
-    missing=$((missing + 1))
-  else
-    log "  ok  skill $AGENTIC_DEV_SKILL_ID [$AGENTIC_DEV_SKILL_DIR]"
+_doctor_one_skill() {
+  local skill_id="$1" dest src
+  dest="$(skill_canonical_dir "$skill_id")"
+  if [[ ! -f "${dest}/SKILL.md" ]]; then
+    log "  missing  skill $skill_id at $dest"
+    return 1
   fi
+  if ! src="$(_recorded_install_source)"; then
+    log "  unverified  skill $skill_id (no recorded install source)"
+    return 1
+  fi
+  if [[ -f "$src/skills/${skill_id}/SKILL.md" ]] \
+    && ! cmp -s "$src/skills/${skill_id}/SKILL.md" "${dest}/SKILL.md"; then
+    log "  stale  skill $skill_id (run ./install.sh from $src)"
+    return 1
+  fi
+  log "  ok  skill $skill_id [$dest]"
+  return 0
+}
+
+doctor_skill() {
+  local missing=0 agent_cmd agent_skills_dir link skill_id
+  while IFS= read -r skill_id; do
+    [[ -n "$skill_id" ]] || continue
+    _doctor_one_skill "$skill_id" || missing=$((missing + 1))
+  done < <(_skill_ids)
 
   agent_cmd="$(read_agent_command 2>/dev/null || printf '%s' "cursor-agent")"
   if agent_skills_dir="$(skill_agent_extra_global_dirs "$agent_cmd" 2>/dev/null)"; then
-    link="${agent_skills_dir}/${AGENTIC_DEV_SKILL_ID}"
-    if [[ -L "$link" ]] && _skill_link_is_ours "$link"; then
-      log "  ok  skill link for agent '$agent_cmd' [$link]"
-    elif [[ -e "$link" ]]; then
-      log "  warning  skill path exists but is not our symlink [$link]"
-    else
-      log "  missing  skill link for agent '$agent_cmd' [$link]"
-      missing=$((missing + 1))
-    fi
+    while IFS= read -r skill_id; do
+      [[ -n "$skill_id" ]] || continue
+      link="${agent_skills_dir}/${skill_id}"
+      if [[ -L "$link" ]] && _skill_link_is_ours "$link" "$skill_id"; then
+        log "  ok  skill link for agent '$agent_cmd' [$link]"
+      elif [[ -e "$link" ]]; then
+        log "  warning  skill path exists but is not our symlink [$link]"
+      else
+        log "  missing  skill link for agent '$agent_cmd' [$link]"
+        missing=$((missing + 1))
+      fi
+    done < <(_skill_ids)
   else
     log "  ok  agent '$agent_cmd' uses ~/.agents/skills (no extra link)"
   fi

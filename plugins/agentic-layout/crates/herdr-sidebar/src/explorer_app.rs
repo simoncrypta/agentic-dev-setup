@@ -748,7 +748,7 @@ impl App {
                 explorer_search::apply_search(self);
             }
             KeyCode::Char('v') if self.ctx.uses_external_editor() => {
-                if let Err(e) = herdr_sidebar::embed::refresh_review() {
+                if let Err(e) = herdr_sidebar::embed::open_review() {
                     self.notice = Some(e);
                 }
             }

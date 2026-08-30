@@ -1,6 +1,8 @@
 # After handoff
 
-Remember `{label, path, branch, one-line task}` and stop. Inspect a child only if the user asks.
+`handoff-spawn` prints `{label, path, branch, task}` and appends
+`~/.local/state/agentic-dev/handoffs.jsonl`. Report that tuple. Inspect a child
+only if the user asks.
 
 Example: `Fix-auth_Myapp`, `/home/you/Work/myapp.fix-auth`, `fix-auth`, `refactor auth to JWT`.
 

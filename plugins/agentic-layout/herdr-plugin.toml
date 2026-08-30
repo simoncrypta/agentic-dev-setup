@@ -1,6 +1,6 @@
 id = "agentic-dev.layout"
 name = "Agentic Layout"
-version = "0.3.6"
+version = "0.3.7"
 min_herdr_version = "0.8.0"
 description = "Three-column agent workspace: persistent agent, review/shell center, files/git sidebar"
 platforms = ["linux", "macos"]
@@ -24,6 +24,12 @@ contexts = ["workspace"]
 command = ["bash", "layout.sh", "apply"]
 
 [[actions]]
+id = "start-agent"
+title = "Start agent pane"
+contexts = ["workspace"]
+command = ["bash", "layout.sh", "start-agent"]
+
+[[actions]]
 id = "focus-agent"
 title = "Focus agent pane"
 contexts = ["workspace"]
@@ -34,6 +40,12 @@ id = "select-review"
 title = "Select review view"
 contexts = ["workspace"]
 command = ["bash", "layout.sh", "select-review"]
+
+[[actions]]
+id = "close-review"
+title = "Close review view"
+contexts = ["workspace"]
+command = ["bash", "layout.sh", "close-review"]
 
 [[actions]]
 id = "select-shell"

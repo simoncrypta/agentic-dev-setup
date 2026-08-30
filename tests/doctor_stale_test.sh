@@ -30,7 +30,8 @@ export INSTALL_SRC="$ROOT"
 YES=1
 DRY_RUN=0
 
-mkdir -p "$AGENTIC_DEV_CONFIG_DIR" "$WORKTRUNK_CONFIG_DIR" "$AGENTIC_DEV_SKILL_DIR" "$AGENTIC_DEV_SHARE_DIR"
+mkdir -p "$AGENTIC_DEV_CONFIG_DIR" "$WORKTRUNK_CONFIG_DIR" "$AGENTIC_DEV_SKILL_DIR" \
+  "$AGENTS_SKILLS_DIR/review" "$AGENTIC_DEV_SHARE_DIR"
 cat >"$AGENTIC_DEV_USER_CONFIG" <<'EOF'
 [agent]
 command = "agent"
@@ -41,6 +42,7 @@ EOF
 
 cp "$ROOT/config/worktrunk/herdr-layout.sh" "$WORKTRUNK_CONFIG_DIR/herdr-layout.sh"
 cp "$ROOT/skills/handoff/SKILL.md" "$AGENTIC_DEV_SKILL_DIR/SKILL.md"
+cp "$ROOT/skills/review/SKILL.md" "$AGENTS_SKILLS_DIR/review/SKILL.md"
 
 record_install_source
 [[ -f "$AGENTIC_DEV_SOURCE_PATH_FILE" ]] || fail "source-path was not recorded"

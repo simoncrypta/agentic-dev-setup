@@ -75,17 +75,18 @@ Config:
   ~/.config/worktrunk/herdr-layout.sh
   ~/.config/worktrunk/config.toml        worktrunk hooks
   ~/.agents/skills/handoff/              handoff skill (canonical)
+  ~/.agents/skills/review/               on-demand hunk review skill (canonical)
   ~/.config/fcitx5/conf/keyboard.conf    Linux fcitx5 hint trigger override
 
-Agent skill (`handoff`):
-  Installed to ~/.agents/skills/handoff (https://agentskills.io). Extra symlink
+Agent skills (`handoff`, `review`):
+  Installed to ~/.agents/skills/<id> (https://agentskills.io). Extra symlink
   only for grok/pi/codex/opencode/claude. cursor (`cursor-agent`) uses ~/.agents/skills.
-  Source: skills/handoff/.
+  Source: skills/handoff/, skills/review/.
   Manual: npx skills add simoncrypta/agentic-dev-setup -s handoff -g
 
 Plugin only (see README — review manifest/scripts before install):
   herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout
-  herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.6
+  herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.7
   herdr plugin link /path/to/agentic-dev-setup/plugins/agentic-layout
   herdr plugin config-dir agentic-dev.layout
   herdr plugin action invoke agentic-dev.layout.create
@@ -100,7 +101,7 @@ show_summary() {
   log "Review command: $(read_layout_review 2>/dev/null || echo 'hunk diff')"
   log "Editor command: $(read_layout_editor 2>/dev/null || echo fresh)"
   log "Config: ${AGENTIC_DEV_USER_CONFIG}"
-  log "Skill: ${AGENTIC_DEV_SKILL_DIR}"
+  log "Skills: ${AGENTS_SKILLS_DIR}/handoff, ${AGENTS_SKILLS_DIR}/review"
   log ""
   log "Try: dev"
   log "Help: agentic-dev help"

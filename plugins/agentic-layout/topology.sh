@@ -1,5 +1,6 @@
 # Tab/pane topology. Sourced from layout.sh after herdr helpers.
-# Invariant: Shell + Review tabs, plus editor tabs. Agent + sidebar follow.
+# Invariant: Shell tab always, Review tab on demand, plus editor tabs.
+# Agent + sidebar follow the active center.
 
 _tab_list_tsv() {
   local workspace_id="$1"
@@ -61,6 +62,7 @@ _adopt_tabs_json() {
 }
 
 # Adopt the first non-editor tab as Shell. Review-first workspaces are renamed.
+# Review is optional: adopt a live Review tab if one exists, never create it here.
 _ensure_shell_and_review_tabs() {
   local workspace_id="$1" workdir="$2" state="$3"
   local tabs_tsv adopted shell_id review_id extra
@@ -75,9 +77,7 @@ _ensure_shell_and_review_tabs() {
   tabs_tsv="$(_tab_list_tsv "$workspace_id")"
   adopted="$(_adopt_tabs_json "$state" "$tabs_tsv" "$shell_id")"
   review_id="$(printf '%s' "$adopted" | jq -r '.review_tab_id // empty')"
-  if [[ -z "$review_id" ]]; then
-    review_id="$(_create_tab "$workspace_id" "$workdir" Review)"
-  else
+  if [[ -n "$review_id" ]]; then
     _herdr_json tab rename "$review_id" Review >/dev/null 2>&1 || true
   fi
   tabs_tsv="$(_tab_list_tsv "$workspace_id")"
@@ -350,11 +350,18 @@ _current_tab_id() {
   _focused_tab_id "$workspace_id"
 }
 
+_clear_review_state() {
+  local workspace_id="$1"
+  _state_update "$workspace_id" \
+    '.review_tab_id = "" | .review_pane_id = "" | if .active_center_view == "review" then .active_center_view = "shell" else . end'
+}
+
 # Dock stickies onto the previous tab, then close. Native pane-close of the
 # editor center has crashed Herdr; native tab-close would kill the stickies.
+# Review is ephemeral (like an editor tab) and docks back to Shell.
 _close_tab_id() {
   local tab_id="$1"
-  local workspace_id state shell_tab review_tab dest
+  local workspace_id state shell_tab review_tab dest closing_review=0
   [[ -n "$tab_id" ]] || return 0
   workspace_id="${HERDR_WORKSPACE_ID:-${tab_id%%:*}}"
   export HERDR_WORKSPACE_ID="$workspace_id"
@@ -362,18 +369,28 @@ _close_tab_id() {
   [[ -n "$state" ]] || return 0
   shell_tab="$(printf '%s' "$state" | _jq '.shell_tab_id // empty')"
   review_tab="$(printf '%s' "$state" | _jq '.review_tab_id // empty')"
-  if [[ "$tab_id" == "$shell_tab" || "$tab_id" == "$review_tab" ]]; then
+  if [[ "$tab_id" == "$shell_tab" ]]; then
     return 0
+  fi
+  if [[ -n "$review_tab" && "$tab_id" == "$review_tab" ]]; then
+    closing_review=1
   fi
   if ! _tab_exists "$workspace_id" "$tab_id"; then
+    if (( closing_review )); then
+      _clear_review_state "$workspace_id"
+    fi
     return 0
   fi
-  dest="$(_tab_neighbor "$workspace_id" "$tab_id" -1)"
-  if [[ -z "$dest" || "$dest" == "$tab_id" ]]; then
+  if (( closing_review )); then
     dest="$shell_tab"
-  fi
-  if [[ -z "$dest" || "$dest" == "$tab_id" ]]; then
-    dest="$review_tab"
+  else
+    dest="$(_tab_neighbor "$workspace_id" "$tab_id" -1)"
+    if [[ -z "$dest" || "$dest" == "$tab_id" ]]; then
+      dest="$shell_tab"
+    fi
+    if [[ -z "$dest" || "$dest" == "$tab_id" ]]; then
+      dest="$review_tab"
+    fi
   fi
   if [[ -z "$dest" || "$dest" == "$tab_id" ]]; then
     return 0
@@ -381,6 +398,9 @@ _close_tab_id() {
   _drop_editors_on_tab "$workspace_id" "$tab_id"
   _activate_tab "$dest"
   _herdr_json tab close "$tab_id" >/dev/null 2>&1 || true
+  if (( closing_review )); then
+    _clear_review_state "$workspace_id"
+  fi
 }
 
 _close_current_tab() {
@@ -421,6 +441,57 @@ _close_focused_pane() {
   _herdr_json pane close "$pane" >/dev/null 2>&1 || true
 }
 
+_open_review() {
+  local workspace_id workdir state review_tab review_pane
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 1
+  export HERDR_WORKSPACE_ID="$workspace_id"
+  state="$(_state_load "$workspace_id" 2>/dev/null || true)"
+  [[ -n "$state" ]] || return 1
+  review_tab="$(printf '%s' "$state" | _jq '.review_tab_id // empty')"
+  review_pane="$(printf '%s' "$state" | _jq '.review_pane_id // empty')"
+  if [[ -n "$review_tab" ]] && _tab_exists "$workspace_id" "$review_tab" \
+    && [[ -n "$review_pane" ]] && _pane_exists "$review_pane"; then
+    if _pane_is_shell "$review_pane"; then
+      _restart_pane_cmd "$review_pane" "$(_review_launch)"
+    fi
+    return 0
+  fi
+  workdir="$(printf '%s' "$state" | _jq '.workdir // empty')"
+  workdir="${workdir:-$PWD}"
+  _layout_lock_acquire "$workspace_id" || return 1
+  trap '_layout_lock_release' RETURN
+  state="$(_state_load "$workspace_id" 2>/dev/null || true)"
+  [[ -n "$state" ]] || return 1
+  review_tab="$(printf '%s' "$state" | _jq '.review_tab_id // empty')"
+  if [[ -z "$review_tab" ]] || ! _tab_exists "$workspace_id" "$review_tab"; then
+    review_tab="$(_create_tab "$workspace_id" "$workdir" Review)"
+    [[ -n "$review_tab" ]] || return 1
+  fi
+  state="$(printf '%s' "$state" | jq --arg tab "$review_tab" '.review_tab_id = $tab')"
+  review_pane="$(_ensure_center_pane "$workspace_id" "$workdir" "$review_tab" \
+    review_pane_id center_review "$(_review_launch)" "$state")" || true
+  [[ -n "$review_pane" ]] || return 1
+  state="$(printf '%s' "$state" | jq --arg tab "$review_tab" --arg pane "$review_pane" \
+    '.review_tab_id = $tab | .review_pane_id = $pane')"
+  _state_save "$workspace_id" "$state"
+  _layout_lock_release
+  trap - RETURN
+  return 0
+}
+
+_close_review() {
+  local workspace_id state review_tab
+  workspace_id="$(_dev_workspace_id)"
+  [[ -n "$workspace_id" ]] || return 0
+  export HERDR_WORKSPACE_ID="$workspace_id"
+  state="$(_state_load "$workspace_id" 2>/dev/null || true)"
+  [[ -n "$state" ]] || return 0
+  review_tab="$(printf '%s' "$state" | _jq '.review_tab_id // empty')"
+  [[ -n "$review_tab" ]] || return 0
+  _close_tab_id "$review_tab"
+}
+
 _activate_center_view() {
   local view="$1" state tab_id
   state="$(_dev_state)" || return 0
@@ -429,6 +500,7 @@ _activate_center_view() {
     review) tab_id="$(printf '%s' "$state" | _jq '.review_tab_id // empty')" ;;
     *) return 0 ;;
   esac
+  [[ -n "$tab_id" ]] || return 0
   _activate_tab "$tab_id"
 }
 
@@ -457,11 +529,10 @@ _ensure_center_pane() {
 }
 
 _ensure_agent_pane() {
-  local workdir="$1" state="$2" center_pane="$3" start_agent="${4:-1}"
+  local workdir="$1" state="$2" center_pane="$3"
   local pane
   pane="$(printf '%s' "$state" | _jq '.agent_pane_id // empty')"
   if _pane_exists "$pane"; then
-    _maybe_start_agent_pane "$pane" "$start_agent"
     printf '%s' "$pane"
     return 0
   fi
@@ -469,9 +540,6 @@ _ensure_agent_pane() {
   _herdr_json pane swap --source-pane "$pane" --target-pane "$center_pane" >/dev/null 2>&1 || true
   _stamp_metadata "$pane" agent
   _rename_pane "$pane" agent
-  if [[ "$start_agent" == "1" ]]; then
-    _herdr_json pane run "$pane" "$(_agent_cmd)" >/dev/null || true
-  fi
   printf '%s' "$pane"
 }
 
@@ -492,7 +560,7 @@ _ensure_sidebar_pane() {
   if [[ -x "$sidebar_bin" ]]; then
     _pane_run_sidebar "$pane" "$sidebar_bin"
   else
-    _pane_run_login "$pane" "echo 'sidebar binary missing: build with cargo build --release'; exec $(_login_shell) -li"
+    _pane_run_login "$pane" "echo 'sidebar binary missing: build with cargo build --release'; exec $(_login_shell) -li" || true
     _stamp_metadata "$pane" sidebar
     _rename_pane "$pane" sidebar
   fi
@@ -542,7 +610,6 @@ _ensure_workspace() {
 }
 
 _layout_ensure() {
-  local start_agent="${1:-1}"
   local label="${WT_HERDR_LABEL:-}" workdir="${WT_HERDR_WORKDIR:-}"
   local workspace_id state tabs shell_tab_id review_tab_id
   local review_pane shell_pane agent_pane sidebar_pane active_view
@@ -583,14 +650,21 @@ _layout_ensure() {
   shell_pane="$(_ensure_center_pane "$workspace_id" "$workdir" "$shell_tab_id" \
     shell_pane_id center_shell "$(_shell_launch)" "$state")"
   state="$(printf '%s' "$state" | jq --arg pane "$shell_pane" '.shell_pane_id = $pane')"
-  agent_pane="$(_ensure_agent_pane "$workdir" "$state" "$shell_pane" "$start_agent")"
+  agent_pane="$(_ensure_agent_pane "$workdir" "$state" "$shell_pane")"
   state="$(printf '%s' "$state" | jq --arg pane "$agent_pane" '.agent_pane_id = $pane')"
   sidebar_pane="$(_ensure_sidebar_pane "$workdir" "$state" "$shell_pane")"
-  review_pane="$(_ensure_center_pane "$workspace_id" "$workdir" "$review_tab_id" \
-    review_pane_id center_review "$(_review_launch)" "$state")"
+  review_pane=""
+  if [[ -n "$review_tab_id" ]]; then
+    review_pane="$(_ensure_center_pane "$workspace_id" "$workdir" "$review_tab_id" \
+      review_pane_id center_review "$(_review_launch)" "$state")" || true
+  fi
 
   active_view="$(printf '%s' "$state" | _jq '.active_center_view // "shell"')"
-  [[ "$active_view" == "review" ]] || active_view="shell"
+  if [[ "$active_view" == "review" && -n "$review_tab_id" && -n "$review_pane" ]]; then
+    :
+  else
+    active_view="shell"
+  fi
 
   state="$(printf '%s' "$state" | jq \
     --arg review_tab "$review_tab_id" \

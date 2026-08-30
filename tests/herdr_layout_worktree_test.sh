@@ -28,9 +28,10 @@ mkdir -p "$PLUGIN_ROOT"
 cat >"$PLUGIN_ROOT/layout.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'plugin %s workspace=%s label=%s no_attach=%s prompt=%s\n' \
+printf 'plugin %s workspace=%s label=%s no_attach=%s prompt_file=%s agent_cmd=%s\n' \
   "${1:-}" "${HERDR_WORKSPACE_ID:-}" "${WT_HERDR_LABEL:-}" \
-  "${WT_HERDR_NO_ATTACH:-}" "${WT_HERDR_AGENT_PROMPT:+set}" >>"${HERDR_CALL_LOG}"
+  "${WT_HERDR_NO_ATTACH:-}" "${WT_HERDR_AGENT_PROMPT_FILE:+set}" \
+  "${WT_HERDR_AGENT_CMD:-}" >>"${HERDR_CALL_LOG}"
 EOF
 chmod +x "$PLUGIN_ROOT/layout.sh"
 export WT_HERDR_PLUGIN_ROOT="$PLUGIN_ROOT"
@@ -149,7 +150,7 @@ grep -qE '^worktree open --cwd .*main --path .*main\.feature' "$HERDR_CALL_LOG" 
   || fail "expected herdr worktree open --cwd main --path linked; log=$(cat "$HERDR_CALL_LOG")"
 grep -qE '^workspace create ' "$HERDR_CALL_LOG" \
   && fail "should not fall back to workspace create when worktree open succeeds"
-grep -qE '^plugin create workspace=w-child label=Main_Feature no_attach=1 prompt=$' "$HERDR_CALL_LOG" \
+grep -qE '^plugin create workspace=w-child label=Main_Feature no_attach=1 prompt_file=' "$HERDR_CALL_LOG" \
   || fail "expected direct plugin create for child workspace; log=$(cat "$HERDR_CALL_LOG")"
 grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
   && fail "create must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
@@ -186,16 +187,18 @@ printf 'PASS: linked open passes --cwd so it does not depend on focused workspac
 
 write_fake_herdr open-ok
 : >"$HERDR_CALL_LOG"
-WT_HERDR_AGENT_PROMPT=$'intro\n\nfix auth'
-wt_herdr_layout_create "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
-grep -qE '^plugin create workspace=w-child label=Main_Feature no_attach=1 prompt=set$' "$HERDR_CALL_LOG" \
-  || fail "prompt must be forwarded to plugin create; log=$(cat "$HERDR_CALL_LOG")"
+WT_HERDR_AGENT_CMD=cursor-agent
+WT_HERDR_AGENT_PROMPT_FILE="$TMP_DIR/prompt.txt"
+printf 'task\n' >"$TMP_DIR/prompt.txt"
+wt_herdr_start_agent "Main_Feature" "$TMP_DIR/main.feature" >/dev/null
+grep -qE '^plugin start-agent workspace=w-child label=Main_Feature no_attach=1 prompt_file=set agent_cmd=cursor-agent$' "$HERDR_CALL_LOG" \
+  || fail "start-agent must forward prompt file and agent cmd; log=$(cat "$HERDR_CALL_LOG")"
 grep -q 'plugin action invoke' "$HERDR_CALL_LOG" \
-  && fail "prompted create must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
+  && fail "start-agent must not use plugin action invoke; log=$(cat "$HERDR_CALL_LOG")"
 grep -qE '^agent prompt ' "$HERDR_CALL_LOG" \
-  && fail "helper must not agent prompt; plugin create owns that; log=$(cat "$HERDR_CALL_LOG")"
-unset WT_HERDR_AGENT_PROMPT
-printf 'PASS: create forwards WT_HERDR_AGENT_PROMPT to the plugin\n'
+  && fail "helper must not agent prompt; start-agent owns launch; log=$(cat "$HERDR_CALL_LOG")"
+unset WT_HERDR_AGENT_CMD WT_HERDR_AGENT_PROMPT_FILE
+printf 'PASS: start-agent forwards prompt file and agent cmd to the plugin\n'
 
 write_fake_herdr open-ok
 : >"$HERDR_CALL_LOG"

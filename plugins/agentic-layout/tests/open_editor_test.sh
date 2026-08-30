@@ -118,10 +118,8 @@ if _open_editor 2>/dev/null; then
   fail "open-editor without a path should fail"
 fi
 
-[[ "$(_review_launch)" == "hunk diff" ]] \
-  || fail "review should launch hunk diff, got $(_review_launch)"
-[[ "$(_review_refresh_launch)" == "hunk diff --watch" ]] \
-  || fail "refresh-review should launch hunk diff --watch, got $(_review_refresh_launch)"
+[[ "$(_review_launch)" == "hunk diff --watch" ]] \
+  || fail "review should launch hunk diff --watch, got $(_review_launch)"
 
 # Close-tab: dock stickies onto the previous tab, then close. Never pane-close
 # the editor center (that 3-column teardown has crashed Herdr).
@@ -246,7 +244,7 @@ _close_focused_pane
 grep -q 'pane close w1:pExtra' "$HERDR_CALL_LOG" || fail "close-pane should pane-close an extra split"
 grep -q 'tab close' "$HERDR_CALL_LOG" && fail "close-pane on an extra split must not close a tab"
 
-# Shell/Review tabs are not closable.
+# Shell is not closable. Review is ephemeral (close-review / prefix+k).
 cat >"$TMP_DIR/herdr" <<'FAKE_HERDR'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -306,5 +304,5 @@ printf 'PASS: open-editor reuses the existing tab for the same file\n'
 printf 'PASS: close-tab docks stickies onto the previous tab before closing\n'
 printf 'PASS: close-pane on an editor center closes the tab instead of the pane\n'
 printf 'PASS: close-pane ignores layout columns and pane-closes extra splits\n'
-printf 'PASS: close-tab does not close Shell or Review\n'
+printf 'PASS: close-tab does not close Shell\n'
 printf 'PASS: editor pane.exited recovers by closing the leftover tab\n'
