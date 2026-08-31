@@ -11,19 +11,25 @@ handoff_die() {
 handoff_usage() {
   cat >&2 <<'EOF'
 usage: handoff-spawn --info
-       handoff-spawn <branch> [--dirty|--clean] [--plan] [--workspace <id>]
-                     [--prompt-file <path>] [--] [prompt...]
+       handoff-spawn --stash-prompt
+       handoff-spawn --branch <name> [--dirty|--clean] [--plan] [--workspace <id>]
+                     [--take-pending|--prompt-file <path>]
 
   --info          print JSON facts and exit
+  --stash-prompt  write stdin to the pending prompt file; print its path as JSON
+  --branch NAME   feature branch (required to spawn; do not pass the prompt on argv)
   --dirty         copy uncommitted main changes into the sibling as a working tree
                   (default when main is dirty)
   --clean         HEAD only; leave uncommitted files on main
   --plan          add "Plan/design only; do not implement yet."
   --workspace ID  parent Herdr workspace to keep focused (required when HERDR_ENV
                   is unset but the Herdr socket works)
-  --prompt-file   read the original user prompt from a file instead of args/stdin
+  --take-pending  read and consume the pending prompt file from --info
+  --prompt-file   read the original user prompt from a file
 
-Read the original user prompt from --prompt-file, remaining args, or stdin.
+A positional branch is still accepted. Do not put the user prompt on argv
+(no `-- prompt`). Grok Bot / Auto-review parents: write the pending file, then
+run this script directly with flags and an explicit working directory.
 EOF
   exit 2
 }
@@ -121,6 +127,22 @@ handoff_state_dir() {
   printf '%s/agentic-dev' "${XDG_STATE_HOME:-$HOME/.local/state}"
 }
 
+handoff_pending_prompt_path() {
+  printf '%s/pending-prompt.txt' "$(handoff_state_dir)"
+}
+
+handoff_stash_prompt() {
+  local file text
+  command -v jq >/dev/null 2>&1 || handoff_die "jq is required"
+  mkdir -p "$(handoff_state_dir)"
+  file="$(handoff_pending_prompt_path)"
+  text="$(cat)"
+  [[ -n "$text" ]] || handoff_die "empty prompt on stdin"
+  printf '%s' "$text" >"$file"
+  jq -nc --arg path "$file" '{ok:true,pending_prompt:$path}'
+  printf '\n'
+}
+
 handoff_remember() {
   local dir file
   dir="$(handoff_state_dir)"
@@ -174,8 +196,8 @@ handoff_result_json() {
 }
 
 handoff_info_json() {
-  local cwd branch helper default_copy
-  local herdr_env=0 socket=0 herdr=0 main_ok=0 dirty=0 graphite=0 helper_present=0
+  local cwd branch helper default_copy pending
+  local herdr_env=0 socket=0 herdr=0 main_ok=0 dirty=0 graphite=0 helper_present=0 pending_present=0
   cwd="$(handoff_realpath "$PWD")"
   [[ "${HERDR_ENV:-}" == 1 ]] && herdr_env=1
   if handoff_herdr_socket_ok; then
@@ -201,12 +223,16 @@ handoff_info_json() {
   else
     default_copy="clean"
   fi
+  pending="$(handoff_pending_prompt_path)"
+  pending_present=0
+  [[ -s "$pending" ]] && pending_present=1
   jq -nc \
     --arg cwd "$cwd" \
     --arg branch "$branch" \
     --arg default_copy "$default_copy" \
     --arg helper "$helper" \
     --arg workspace "${HANDOFF_WORKSPACE:-${HERDR_WORKSPACE_ID:-}}" \
+    --arg pending_prompt "$pending" \
     --argjson herdr "$(handoff_bool_json "$herdr")" \
     --argjson herdr_env "$(handoff_bool_json "$herdr_env")" \
     --argjson socket "$(handoff_bool_json "$socket")" \
@@ -214,6 +240,7 @@ handoff_info_json() {
     --argjson dirty "$(handoff_bool_json "$dirty")" \
     --argjson graphite "$(handoff_bool_json "$graphite")" \
     --argjson helper_present "$(handoff_bool_json "$helper_present")" \
+    --argjson pending_prompt_present "$(handoff_bool_json "$pending_present")" \
     '{
       herdr:$herdr,
       herdr_env:$herdr_env,
@@ -226,22 +253,31 @@ handoff_info_json() {
       default_copy:$default_copy,
       helper:$helper,
       helper_present:$helper_present,
-      workspace:$workspace
+      workspace:$workspace,
+      pending_prompt:$pending_prompt,
+      pending_prompt_present:$pending_prompt_present
     }'
 }
 
 handoff_spawn_main() {
   local branch="" dirty="auto" plan=0 prompt="" prompt_file="" main sibling label intro graphite=0 copied=0
   local helper="$HOME/.config/worktrunk/herdr-layout.sh"
-  local json parent_ws file body info=0 started=0
+  local json parent_ws file body info=0 started=0 stash=0 take_pending=0 pending
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -h|--help) handoff_usage ;;
       --info) info=1; shift ;;
+      --stash-prompt) stash=1; shift ;;
+      --take-pending) take_pending=1; shift ;;
       --dirty) dirty=1; shift ;;
       --clean) dirty=0; shift ;;
       --plan) plan=1; shift ;;
+      --branch)
+        [[ $# -ge 2 ]] || handoff_usage
+        branch="$2"
+        shift 2
+        ;;
       --workspace)
         [[ $# -ge 2 ]] || handoff_usage
         HANDOFF_WORKSPACE="$2"
@@ -252,7 +288,9 @@ handoff_spawn_main() {
         prompt_file="$2"
         shift 2
         ;;
-      --) shift; break ;;
+      --)
+        handoff_die "do not pass the prompt after --; write the pending file or use --prompt-file / stdin"
+        ;;
       -*) handoff_usage ;;
       *)
         if [[ -z "$branch" ]]; then
@@ -272,16 +310,28 @@ handoff_spawn_main() {
     return 0
   fi
 
+  if [[ "$stash" -eq 1 ]]; then
+    handoff_stash_prompt
+    return 0
+  fi
+
   [[ -n "$branch" ]] || handoff_usage
-  if [[ -n "$prompt_file" ]]; then
+  if [[ "$take_pending" -eq 1 ]]; then
+    pending="$(handoff_pending_prompt_path)"
+    [[ -f "$pending" ]] || handoff_die "no pending prompt at $pending (write that file, or --stash-prompt)"
+    prompt="$(cat -- "$pending")"
+    rm -f "$pending"
+  elif [[ -n "$prompt_file" ]]; then
     [[ -f "$prompt_file" ]] || handoff_die "prompt file not found: $prompt_file"
     prompt="$(cat -- "$prompt_file")"
   elif [[ $# -gt 0 ]]; then
     prompt="$*"
+  elif [[ -t 0 ]]; then
+    handoff_die "empty prompt (Grok Bot: write pending_prompt from --info, then --take-pending; or --stash-prompt on stdin)"
   else
     prompt="$(cat)"
   fi
-  [[ -n "$prompt" ]] || handoff_die "empty prompt (pass --prompt-file, args, or stdin)"
+  [[ -n "$prompt" ]] || handoff_die "empty prompt (write pending_prompt, --prompt-file, or stdin)"
 
   command -v git >/dev/null 2>&1 || handoff_die "git is required"
   command -v wt >/dev/null 2>&1 || handoff_die "wt (worktrunk) is required"

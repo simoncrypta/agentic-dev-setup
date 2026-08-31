@@ -26,9 +26,11 @@ run `--info` then spawn — not assemble these steps.
    and append `~/.local/state/agentic-dev/handoffs.jsonl` whenever the sibling
    exists. `agent_started` is false on a wait timeout.
 
-Parents outside a Herdr pane (`HERDR_ENV` unset) may still spawn when
-`herdr workspace list` works: pass `--workspace <parent-id>`. Prefer
-`--prompt-file` over a long argv when invoking via `herdr pane run`.
+Parents outside a Herdr pane (`HERDR_ENV` unset) spawn by running the
+**resolved script directly** with `--workspace`, `--branch`, and
+`--take-pending` (working directory = `--info` `cwd`). Auto-review rejects
+`python -c`, wrapper `.sh` files, `herdr pane run … spawn -- <prompt>`, and
+any argv after `--`. Write `pending_prompt` as plain text, then take-pending.
 
 `start-agent` launches one quoted `bash -li -c '… cat file … exec cursor-agent -- "$p"'`
 line. `herdr pane run a b c` types unquoted words, so a multiline prompt cannot

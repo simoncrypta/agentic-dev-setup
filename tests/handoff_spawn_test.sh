@@ -182,11 +182,43 @@ test_parent_workspace_required_without_herdr_env() {
 
 test_prompt_file_missing_dies() {
   local rc=0 err
-  err="$("$ROOT/skills/handoff/scripts/handoff-spawn" foo --prompt-file "$TMP_DIR/no-such-prompt" 2>&1)" || rc=$?
+  err="$("$ROOT/skills/handoff/scripts/handoff-spawn" --branch foo --prompt-file "$TMP_DIR/no-such-prompt" 2>&1)" || rc=$?
   [[ "$rc" -eq 1 ]] || fail "missing prompt file should exit 1, got $rc ($err)"
   printf '%s' "$err" | grep -q 'prompt file not found' \
     || fail "missing prompt file message: $err"
   printf 'PASS: --prompt-file dies before Herdr when the file is missing\n'
+}
+
+test_rejects_prompt_after_double_dash() {
+  local rc=0 err
+  err="$("$ROOT/skills/handoff/scripts/handoff-spawn" --branch foo --clean -- 'QA cedar-pg' 2>&1)" || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "-- prompt should exit 1, got $rc ($err)"
+  printf '%s' "$err" | grep -q 'do not pass the prompt after --' \
+    || fail "double-dash message: $err"
+  printf 'PASS: argv after -- is rejected so Auto-review does not bind a payload\n'
+}
+
+test_stash_and_take_pending() {
+  local out path rc=0 err
+  export XDG_STATE_HOME="$TMP_DIR/xdg-state"
+  export HOME="$TMP_DIR/empty-home"
+  unset HERDR_ENV HERDR_WORKSPACE_ID
+  printf '#!/bin/sh\nexit 1\n' >"$TMP_DIR/no-herdr"
+  chmod +x "$TMP_DIR/no-herdr"
+  out="$(printf 'QA cedar-pg beta' | "$ROOT/skills/handoff/scripts/handoff-spawn" --stash-prompt)"
+  path="$(printf '%s' "$out" | jq -r '.pending_prompt')"
+  [[ -f "$path" ]] || fail "stash should write $path ($out)"
+  grep -q 'QA cedar-pg beta' "$path" || fail "stash contents: $(cat "$path")"
+  out="$(HERDR_BIN_PATH="$TMP_DIR/no-herdr" "$ROOT/skills/handoff/scripts/handoff-spawn" --info)"
+  printf '%s' "$out" | jq -e '.pending_prompt_present == true' >/dev/null \
+    || fail "info should see pending: $out"
+  err="$("$ROOT/skills/handoff/scripts/handoff-spawn" --branch pg-beta --clean --workspace w26 --take-pending 2>&1)" || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "take-pending should fail later without helper, got $rc ($err)"
+  [[ ! -f "$path" ]] || fail "take-pending must consume the pending file"
+  printf '%s' "$err" | grep -q 'missing' \
+    || fail "expected missing helper after consume: $err"
+  unset XDG_STATE_HOME HOME
+  printf 'PASS: --stash-prompt / --take-pending keep the prompt off argv\n'
 }
 
 test_graphite_rev_parse_is_not_enough
@@ -200,3 +232,5 @@ test_info_json_socket_without_herdr_env
 test_result_json_records_unconfirmed_agent
 test_parent_workspace_required_without_herdr_env
 test_prompt_file_missing_dies
+test_rejects_prompt_after_double_dash
+test_stash_and_take_pending

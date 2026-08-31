@@ -132,6 +132,11 @@ test_handoff_spawn_is_the_recipe() {
     || fail "SKILL.md must not keep the glued multi-tool recipe"
   grep -q -- '--workspace' "$ROOT/skills/handoff/SKILL.md" \
     || fail "SKILL.md must cover socket-attached parents"
+  grep -q -- '--take-pending' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must use --take-pending so Auto-review does not bind a prompt argv"
+  grep -q 'do not put the original user prompt on the spawn command line' "$ROOT/skills/handoff/SKILL.md" \
+    || grep -q 'Never put the original user prompt on the spawn command line' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must forbid prompt-on-argv"
   grep -q 'handoff-spawn' "$ROOT/skills/handoff/MANIFEST" \
     || fail "MANIFEST must list handoff-spawn"
   printf 'PASS: handoff skill recipe is the spawn script\n'
