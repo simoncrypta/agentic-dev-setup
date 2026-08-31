@@ -19,9 +19,16 @@ run `--info` then spawn — not assemble these steps.
 5. Wrap intro (worktree + review checkpoint; optional `--plan` / Graphite line)
    around the original prompt, prefix `/poteto-mode`, write a prompt file.
 6. `WT_HERDR_AGENT_CMD=cursor-agent WT_HERDR_AGENT_PROMPT_FILE=… wt_herdr_start_agent`.
-   Layout create is not called again. Fail if the Agent pane does not come up.
+   Layout create is not called again. start-agent waits up to 30s for Herdr to
+   tag the Agent pane (or a non-shell FG process). A timeout does **not**
+   discard the worktree.
 7. Print JSON `{label,path,branch,task,agent_started,dirty_copied,graphite}`
-   and append `~/.local/state/agentic-dev/handoffs.jsonl`.
+   and append `~/.local/state/agentic-dev/handoffs.jsonl` whenever the sibling
+   exists. `agent_started` is false on a wait timeout.
+
+Parents outside a Herdr pane (`HERDR_ENV` unset) may still spawn when
+`herdr workspace list` works: pass `--workspace <parent-id>`. Prefer
+`--prompt-file` over a long argv when invoking via `herdr pane run`.
 
 `start-agent` launches one quoted `bash -li -c '… cat file … exec cursor-agent -- "$p"'`
 line. `herdr pane run a b c` types unquoted words, so a multiline prompt cannot

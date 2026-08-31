@@ -156,17 +156,36 @@ _launch_agent_on_pane() {
   _herdr_json pane run "$pane" "$agent" >/dev/null
 }
 
-_wait_agent_running() {
-  local pane="$1" waited=0
+# True when Herdr already tagged the pane, or a non-shell process is in the
+# foreground (the agent field can lag after pane run / a heavy worktree copy).
+_pane_agent_started() {
+  local pane="$1" json pgid shell_pid
   [[ -n "$pane" ]] || return 1
-  while (( waited < 50 )); do
-    if ! _pane_is_shell "$pane"; then
+  if ! _pane_is_shell "$pane"; then
+    return 0
+  fi
+  json="$(_herdr_json pane process-info --pane "$pane")" || return 1
+  pgid="$(printf '%s' "${json:-}" | _jq '.result.process_info.foreground_process_group_id // empty' 2>/dev/null || true)"
+  shell_pid="$(printf '%s' "${json:-}" | _jq '.result.process_info.shell_pid // empty' 2>/dev/null || true)"
+  [[ "$pgid" =~ ^[1-9][0-9]*$ ]] && (( pgid > 1 )) && [[ "$pgid" != "$shell_pid" ]]
+}
+
+_wait_agent_running() {
+  local pane="$1" timeout_ms waited=0
+  [[ -n "$pane" ]] || return 1
+  timeout_ms="${WT_HERDR_AGENT_READY_TIMEOUT_MS:-30000}"
+  [[ "$timeout_ms" =~ ^[0-9]+$ ]] || timeout_ms=30000
+  while true; do
+    if _pane_agent_started "$pane"; then
       return 0
     fi
-    sleep 0.1
-    waited=$((waited + 1))
+    if (( waited >= timeout_ms )); then
+      break
+    fi
+    sleep 0.2
+    waited=$((waited + 200))
   done
-  echo "agentic-layout: agent did not start on pane $pane" >&2
+  echo "agentic-layout: agent did not start on pane $pane within ${timeout_ms}ms" >&2
   return 1
 }
 

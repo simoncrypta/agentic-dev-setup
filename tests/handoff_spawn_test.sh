@@ -124,14 +124,69 @@ test_info_json_reports_graphite_and_dirty() {
   else
     printf '{}\n' >"$repo/$printed"
   fi
-  unset HERDR_ENV HERDR_WORKSPACE_ID
-  out="$(cd "$repo" && "$ROOT/skills/handoff/scripts/handoff-spawn" --info)"
+  printf '#!/bin/sh\nexit 1\n' >"$TMP_DIR/no-herdr"
+  chmod +x "$TMP_DIR/no-herdr"
+  unset HERDR_ENV HERDR_WORKSPACE_ID HANDOFF_WORKSPACE
+  out="$(cd "$repo" && HERDR_BIN_PATH="$TMP_DIR/no-herdr" \
+    "$ROOT/skills/handoff/scripts/handoff-spawn" --info)"
   printf '%s' "$out" | jq -e '.dirty == true' >/dev/null || fail "info dirty: $out"
   printf '%s' "$out" | jq -e '.graphite == true' >/dev/null || fail "info graphite: $out"
   printf '%s' "$out" | jq -e '.default_copy == "dirty"' >/dev/null || fail "info default_copy: $out"
   printf '%s' "$out" | jq -e '.herdr == false' >/dev/null || fail "info herdr: $out"
+  printf '%s' "$out" | jq -e '.herdr_env == false' >/dev/null || fail "info herdr_env: $out"
+  printf '%s' "$out" | jq -e '.socket == false' >/dev/null || fail "info socket: $out"
   printf '%s' "$out" | jq -e '.main_checkout == true' >/dev/null || fail "info main_checkout: $out"
   printf 'PASS: --info reports dirty, graphite, and herdr without agent inspection\n'
+}
+
+test_info_json_socket_without_herdr_env() {
+  local repo="$TMP_DIR/info-socket" out
+  git_init "$repo"
+  cat >"$TMP_DIR/fake-herdr" <<'EOF'
+#!/bin/sh
+echo '{"result":{"workspaces":[]}}'
+EOF
+  chmod +x "$TMP_DIR/fake-herdr"
+  unset HERDR_ENV
+  export HERDR_WORKSPACE_ID=w26
+  out="$(cd "$repo" && HERDR_BIN_PATH="$TMP_DIR/fake-herdr" \
+    "$ROOT/skills/handoff/scripts/handoff-spawn" --info)"
+  unset HERDR_WORKSPACE_ID
+  printf '%s' "$out" | jq -e '.herdr == true' >/dev/null || fail "socket herdr: $out"
+  printf '%s' "$out" | jq -e '.herdr_env == false' >/dev/null || fail "socket herdr_env: $out"
+  printf '%s' "$out" | jq -e '.socket == true' >/dev/null || fail "socket flag: $out"
+  printf '%s' "$out" | jq -e '.workspace == "w26"' >/dev/null || fail "socket workspace: $out"
+  printf 'PASS: --info treats a live Herdr socket as herdr without HERDR_ENV\n'
+}
+
+test_result_json_records_unconfirmed_agent() {
+  local got
+  got="$(handoff_result_json "Lbl" "/tmp/wt" "br" "do the thing" 0 0 1)"
+  printf '%s' "$got" | jq -e '.ok == true' >/dev/null || fail "ok: $got"
+  printf '%s' "$got" | jq -e '.agent_started == false' >/dev/null || fail "started: $got"
+  printf '%s' "$got" | jq -e '.graphite == true' >/dev/null || fail "graphite: $got"
+  printf '%s' "$got" | jq -e '.path == "/tmp/wt"' >/dev/null || fail "path: $got"
+  printf 'PASS: result JSON is emitted when agent start is unconfirmed\n'
+}
+
+test_parent_workspace_required_without_herdr_env() {
+  unset HERDR_ENV HERDR_WORKSPACE_ID HANDOFF_WORKSPACE
+  handoff_parent_workspace && fail "parent workspace must be empty"
+  HANDOFF_WORKSPACE=w26
+  [[ "$(handoff_parent_workspace)" == w26 ]] || fail " --workspace should win"
+  unset HANDOFF_WORKSPACE
+  HERDR_WORKSPACE_ID=w9
+  [[ "$(handoff_parent_workspace)" == w9 ]] || fail "HERDR_WORKSPACE_ID fallback"
+  printf 'PASS: parent workspace comes from --workspace or HERDR_WORKSPACE_ID\n'
+}
+
+test_prompt_file_missing_dies() {
+  local rc=0 err
+  err="$("$ROOT/skills/handoff/scripts/handoff-spawn" foo --prompt-file "$TMP_DIR/no-such-prompt" 2>&1)" || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "missing prompt file should exit 1, got $rc ($err)"
+  printf '%s' "$err" | grep -q 'prompt file not found' \
+    || fail "missing prompt file message: $err"
+  printf 'PASS: --prompt-file dies before Herdr when the file is missing\n'
 }
 
 test_graphite_rev_parse_is_not_enough
@@ -141,3 +196,7 @@ test_usage
 test_prompt_text_prefixes_poteto_mode
 test_graphite_track_uses_resolved_config_path
 test_info_json_reports_graphite_and_dirty
+test_info_json_socket_without_herdr_env
+test_result_json_records_unconfirmed_agent
+test_parent_workspace_required_without_herdr_env
+test_prompt_file_missing_dies

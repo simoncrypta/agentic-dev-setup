@@ -130,6 +130,8 @@ test_handoff_spawn_is_the_recipe() {
     || fail "SKILL.md must tell the parent to run --info"
   grep -q 'Do not inspect git, Graphite, Herdr, or worktrees yourself' "$ROOT/skills/handoff/SKILL.md" \
     || fail "SKILL.md must not keep the glued multi-tool recipe"
+  grep -q -- '--workspace' "$ROOT/skills/handoff/SKILL.md" \
+    || fail "SKILL.md must cover socket-attached parents"
   grep -q 'handoff-spawn' "$ROOT/skills/handoff/MANIFEST" \
     || fail "MANIFEST must list handoff-spawn"
   printf 'PASS: handoff skill recipe is the spawn script\n'

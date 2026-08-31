@@ -11,15 +11,19 @@ handoff_die() {
 handoff_usage() {
   cat >&2 <<'EOF'
 usage: handoff-spawn --info
-       handoff-spawn <branch> [--dirty|--clean] [--plan] [--] [prompt...]
+       handoff-spawn <branch> [--dirty|--clean] [--plan] [--workspace <id>]
+                     [--prompt-file <path>] [--] [prompt...]
 
-  --info    print JSON facts (herdr, main_checkout, dirty, graphite, …) and exit
-  --dirty   copy uncommitted main changes into the sibling as a working tree
-            (default when main is dirty)
-  --clean   HEAD only; leave uncommitted files on main
-  --plan    add "Plan/design only; do not implement yet."
+  --info          print JSON facts and exit
+  --dirty         copy uncommitted main changes into the sibling as a working tree
+                  (default when main is dirty)
+  --clean         HEAD only; leave uncommitted files on main
+  --plan          add "Plan/design only; do not implement yet."
+  --workspace ID  parent Herdr workspace to keep focused (required when HERDR_ENV
+                  is unset but the Herdr socket works)
+  --prompt-file   read the original user prompt from a file instead of args/stdin
 
-Read the original user prompt from remaining args or stdin.
+Read the original user prompt from --prompt-file, remaining args, or stdin.
 EOF
   exit 2
 }
@@ -134,11 +138,52 @@ handoff_prompt_text() {
   printf '/poteto-mode\n\n%s' "$body"
 }
 
+handoff_herdr_bin() {
+  printf '%s' "${HERDR_BIN_PATH:-herdr}"
+}
+
+handoff_herdr_socket_ok() {
+  "$(handoff_herdr_bin)" workspace list >/dev/null 2>&1
+}
+
+handoff_parent_workspace() {
+  local ws="${HANDOFF_WORKSPACE:-${HERDR_WORKSPACE_ID:-}}"
+  [[ -n "$ws" ]] || return 1
+  printf '%s' "$ws"
+}
+
+handoff_bool_json() {
+  if [[ "$1" -eq 1 ]]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+handoff_result_json() {
+  local label="$1" sibling="$2" branch="$3" prompt="$4" started="$5" copied="$6" graphite="$7"
+  jq -nc \
+    --arg label "$label" \
+    --arg path "$sibling" \
+    --arg branch "$branch" \
+    --arg task "$(handoff_one_line "$prompt")" \
+    --argjson agent_started "$(handoff_bool_json "$started")" \
+    --argjson dirty_copied "$(handoff_bool_json "$copied")" \
+    --argjson graphite "$(handoff_bool_json "$graphite")" \
+    '{ok:true,label:$label,path:$path,branch:$branch,task:$task,agent_started:$agent_started,dirty_copied:$dirty_copied,graphite:$graphite}'
+}
+
 handoff_info_json() {
   local cwd branch helper default_copy
-  local herdr=0 main_ok=0 dirty=0 graphite=0 helper_present=0
+  local herdr_env=0 socket=0 herdr=0 main_ok=0 dirty=0 graphite=0 helper_present=0
   cwd="$(handoff_realpath "$PWD")"
-  [[ "${HERDR_ENV:-}" == 1 ]] && herdr=1
+  [[ "${HERDR_ENV:-}" == 1 ]] && herdr_env=1
+  if handoff_herdr_socket_ok; then
+    socket=1
+  fi
+  if [[ "$herdr_env" -eq 1 || "$socket" -eq 1 ]]; then
+    herdr=1
+  fi
   if command -v git >/dev/null 2>&1 && handoff_is_main_checkout "$cwd"; then
     main_ok=1
   fi
@@ -161,14 +206,18 @@ handoff_info_json() {
     --arg branch "$branch" \
     --arg default_copy "$default_copy" \
     --arg helper "$helper" \
-    --arg workspace "${HERDR_WORKSPACE_ID:-}" \
-    --argjson herdr "$([[ "$herdr" -eq 1 ]] && echo true || echo false)" \
-    --argjson main_checkout "$([[ "$main_ok" -eq 1 ]] && echo true || echo false)" \
-    --argjson dirty "$([[ "$dirty" -eq 1 ]] && echo true || echo false)" \
-    --argjson graphite "$([[ "$graphite" -eq 1 ]] && echo true || echo false)" \
-    --argjson helper_present "$([[ "$helper_present" -eq 1 ]] && echo true || echo false)" \
+    --arg workspace "${HANDOFF_WORKSPACE:-${HERDR_WORKSPACE_ID:-}}" \
+    --argjson herdr "$(handoff_bool_json "$herdr")" \
+    --argjson herdr_env "$(handoff_bool_json "$herdr_env")" \
+    --argjson socket "$(handoff_bool_json "$socket")" \
+    --argjson main_checkout "$(handoff_bool_json "$main_ok")" \
+    --argjson dirty "$(handoff_bool_json "$dirty")" \
+    --argjson graphite "$(handoff_bool_json "$graphite")" \
+    --argjson helper_present "$(handoff_bool_json "$helper_present")" \
     '{
       herdr:$herdr,
+      herdr_env:$herdr_env,
+      socket:$socket,
       main_checkout:$main_checkout,
       cwd:$cwd,
       branch:$branch,
@@ -182,9 +231,9 @@ handoff_info_json() {
 }
 
 handoff_spawn_main() {
-  local branch="" dirty="auto" plan=0 prompt="" main sibling label intro graphite=0 copied=0
+  local branch="" dirty="auto" plan=0 prompt="" prompt_file="" main sibling label intro graphite=0 copied=0
   local helper="$HOME/.config/worktrunk/herdr-layout.sh"
-  local json task parent_ws file body info=0
+  local json parent_ws file body info=0 started=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -193,6 +242,16 @@ handoff_spawn_main() {
       --dirty) dirty=1; shift ;;
       --clean) dirty=0; shift ;;
       --plan) plan=1; shift ;;
+      --workspace)
+        [[ $# -ge 2 ]] || handoff_usage
+        HANDOFF_WORKSPACE="$2"
+        shift 2
+        ;;
+      --prompt-file)
+        [[ $# -ge 2 ]] || handoff_usage
+        prompt_file="$2"
+        shift 2
+        ;;
       --) shift; break ;;
       -*) handoff_usage ;;
       *)
@@ -214,19 +273,29 @@ handoff_spawn_main() {
   fi
 
   [[ -n "$branch" ]] || handoff_usage
-  if [[ $# -gt 0 ]]; then
+  if [[ -n "$prompt_file" ]]; then
+    [[ -f "$prompt_file" ]] || handoff_die "prompt file not found: $prompt_file"
+    prompt="$(cat -- "$prompt_file")"
+  elif [[ $# -gt 0 ]]; then
     prompt="$*"
   else
     prompt="$(cat)"
   fi
-  [[ -n "$prompt" ]] || handoff_die "empty prompt (pass args or stdin)"
+  [[ -n "$prompt" ]] || handoff_die "empty prompt (pass --prompt-file, args, or stdin)"
 
-  [[ "${HERDR_ENV:-}" == 1 ]] || handoff_die "not inside a Herdr pane (HERDR_ENV!=1)"
-  parent_ws="${HERDR_WORKSPACE_ID:-}"
   command -v git >/dev/null 2>&1 || handoff_die "git is required"
   command -v wt >/dev/null 2>&1 || handoff_die "wt (worktrunk) is required"
   command -v jq >/dev/null 2>&1 || handoff_die "jq is required"
   [[ -f "$helper" ]] || handoff_die "missing $helper"
+
+  if [[ "${HERDR_ENV:-}" == 1 ]]; then
+    parent_ws="$(handoff_parent_workspace || true)"
+  elif handoff_herdr_socket_ok; then
+    parent_ws="$(handoff_parent_workspace)" \
+      || handoff_die "not inside a Herdr pane; pass --workspace <id> (HERDR_ENV is unset)"
+  else
+    handoff_die "cannot reach Herdr (HERDR_ENV unset and herdr workspace list failed)"
+  fi
 
   main="$(handoff_realpath "$PWD")"
   handoff_is_main_checkout "$main" \
@@ -281,22 +350,16 @@ handoff_spawn_main() {
   body="$(printf '%s\n\n%s' "$intro" "$prompt")"
   printf '%s' "$(handoff_prompt_text "$body")" >"$file"
 
-  WT_HERDR_KEEP_FOCUS="$parent_ws" \
+  if WT_HERDR_KEEP_FOCUS="$parent_ws" \
     WT_HERDR_AGENT_CMD=cursor-agent \
     WT_HERDR_AGENT_PROMPT_FILE="$file" \
-    wt_herdr_start_agent "$label" "$sibling" \
-    || handoff_die "child agent did not start with the task"
+    wt_herdr_start_agent "$label" "$sibling"; then
+    started=1
+  else
+    echo "handoff-spawn: start-agent did not confirm a live agent; worktree is still $sibling ($label)" >&2
+  fi
 
-  task="$(handoff_one_line "$prompt")"
-  json="$(jq -nc \
-    --arg label "$label" \
-    --arg path "$sibling" \
-    --arg branch "$branch" \
-    --arg task "$task" \
-    --argjson agent_started true \
-    --argjson dirty_copied "$([[ "$copied" -eq 1 ]] && echo true || echo false)" \
-    --argjson graphite "$([[ "$graphite" -eq 1 ]] && echo true || echo false)" \
-    '{ok:true,label:$label,path:$path,branch:$branch,task:$task,agent_started:$agent_started,dirty_copied:$dirty_copied,graphite:$graphite}')"
+  json="$(handoff_result_json "$label" "$sibling" "$branch" "$prompt" "$started" "$copied" "$graphite")"
   handoff_remember "$json"
   printf '%s\n' "$json"
 }

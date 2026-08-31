@@ -11,7 +11,7 @@ Install the full stack (Herdr, Worktrunk, agents, keybindings) via [agentic-dev-
 ## Plugin only
 
 ```bash
-herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.7 --yes
+herdr plugin install simoncrypta/agentic-dev-setup/plugins/agentic-layout --ref v0.3.8 --yes
 ```
 
 Local development:

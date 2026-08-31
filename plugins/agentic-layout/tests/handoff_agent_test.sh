@@ -164,3 +164,41 @@ got="$(_ensure_agent_pane /tmp/x "$state" pane-shell)"
 grep -q 'pane run' "$HERDR_CALL_LOG" \
   && fail "layout ensure must not start the agent; log=$(cat "$HERDR_CALL_LOG")"
 printf 'PASS: layout create/ensure leaves the agent pane as a shell\n'
+
+# Wait succeeds from a non-shell FG process even when the agent field lags.
+cat >"$TMP_DIR/herdr" <<'FAKE_HERDR'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HERDR_CALL_LOG"
+case "$1 $2" in
+  "pane get")
+    printf '%s\n' '{"result":{"pane":{"pane_id":"pane-agent","agent":null}}}'
+    ;;
+  "pane process-info")
+    printf '%s\n' '{"result":{"process_info":{"foreground_process_group_id":4242,"shell_pid":100,"foreground_processes":[{"pid":4242}]}}}'
+    ;;
+  *)
+    printf '%s\n' '{"result":{}}'
+    ;;
+esac
+FAKE_HERDR
+chmod +x "$TMP_DIR/herdr"
+: >"$HERDR_CALL_LOG"
+_wait_agent_running pane-agent || fail "non-shell FG process should count as started"
+printf 'PASS: wait treats a non-shell FG process as agent started\n'
+
+# Timeout is bounded (do not wait the production 30s in tests).
+cat >"$TMP_DIR/herdr" <<'FAKE_HERDR'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HERDR_CALL_LOG"
+printf '%s\n' '{"result":{"pane":{"pane_id":"pane-agent","agent":null},"process_info":{"foreground_process_group_id":1,"shell_pid":1}}}'
+FAKE_HERDR
+chmod +x "$TMP_DIR/herdr"
+export WT_HERDR_AGENT_READY_TIMEOUT_MS=0
+: >"$HERDR_CALL_LOG"
+if _wait_agent_running pane-agent; then
+  fail "timeout 0 with a shell pane must fail"
+fi
+unset WT_HERDR_AGENT_READY_TIMEOUT_MS
+printf 'PASS: wait timeout is configurable and can fail immediately\n'
